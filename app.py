@@ -259,7 +259,7 @@ class MathAssistant:
                     "Content-Type": "application/json"
                 },
                 json=payload,
-                timeout=30
+                timeout=90
             )
             
             if response.status_code == 200:
