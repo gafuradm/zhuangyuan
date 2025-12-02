@@ -361,17 +361,39 @@ def create_pdf(answer: str) -> bytes:
     buffer.seek(0)
     return buffer.getvalue()
 
-def parse_latex_tasks(raw):
+def parse_latex_tasks(raw: str):
     tasks = []
 
-    # 1. Находим все блоки \\[ ... \\]
-    blocks = re.findall(r"\\\\\[(.*?)\\\\\]", raw, flags=re.S)
+    # 1) Убираем переносы в \text{...} чтобы не ломало парсер
+    raw = re.sub(r"\\text\{([^}]*)\n([^}]*)\}", r"\\text{\1 \2}", raw)
 
-    for block in blocks:
-        # 2. Ищем \text{ЗАДАЧА N: ...}
-        match = re.search(r"\\text\{ЗАДАЧА\s*\d+:\s*(.*?)\}", block)
-        if match:
-            tasks.append(match.group(1).strip())
+    # --------- ПАТТЕРН 1: \[  \] -----------
+    blocks = re.findall(r"\\\[(.*?)\\\]", raw, flags=re.S)
+    for b in blocks:
+        m = re.search(r"ЗАДАЧА\s*\d+[:\.]?\s*(.*)", b, flags=re.I)
+        if m:
+            tasks.append(m.group(1).strip())
+
+    # --------- ПАТТЕРН 2: $$  $$ -----------
+    blocks = re.findall(r"\$\$(.*?)\$\$", raw, flags=re.S)
+    for b in blocks:
+        m = re.search(r"ЗАДАЧА\s*\d+[:\.]?\s*(.*)", b, flags=re.I)
+        if m:
+            tasks.append(m.group(1).strip())
+
+    # --------- ПАТТЕРН 3: \(  \) ------------
+    blocks = re.findall(r"\\\((.*?)\\\)", raw, flags=re.S)
+    for b in blocks:
+        m = re.search(r"ЗАДАЧА\s*\d+[:\.]?\s*(.*)", b, flags=re.I)
+        if m:
+            tasks.append(m.group(1).strip())
+
+    # --------- ПАТТЕРН 4: Просто текст ------
+    lines = raw.splitlines()
+    for line in lines:
+        m = re.match(r"\s*ЗАДАЧА\s*\d+[:\.]?\s*(.*)", line, flags=re.I)
+        if m:
+            tasks.append(m.group(1).strip())
 
     return tasks
 
