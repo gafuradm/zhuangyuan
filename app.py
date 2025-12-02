@@ -355,7 +355,7 @@ def main():
         </script>
         """, unsafe_allow_html=True)
         
-        st.code(st.session_state.last_answer, language="markdown", label="Ответ в формате Markdown")
+        st.code(st.session_state.last_answer, language="markdown")
     
     with col1:
         if st.button("🎯 Получить ответ", type="primary", use_container_width=True):
