@@ -15,11 +15,24 @@ st.set_page_config(
     layout="wide"
 )
 
+# Загружаем KaTeX в самом начале
 st.markdown("""
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
-  onload="renderMathInElement(document.body);"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05" crossorigin="anonymous"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        renderMathInElement(document.body, {
+            delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$', right: '$', display: false},
+                {left: '\\(', right: '\\)', display: false},
+                {left: '\\[', right: '\\]', display: true}
+            ],
+            throwOnError: false
+        });
+    });
+</script>
 """, unsafe_allow_html=True)
 
 # CSS стили
@@ -174,24 +187,37 @@ class MathAssistant:
         
         context = "\n".join(all_contexts)
         
-        # Формируем промпт
+        # Формируем промпт с явным указанием использовать LaTeX
         if context.strip():
             system_prompt = f"""Ты — преподаватель математики. Отвечай на русском языке.
 
-ИНФОРМАЦИЯ ИЗ УЧЕБНИКОВ:
-{context}
+    ИСПОЛЬЗУЙ LaTeX ДЛЯ МАТЕМАТИЧЕСКИХ ФОРМУЛ:
+    - Для встроенных формул: \\(формула\\)
+    - Для формул на отдельной строке: \\[формула\\]
+    - Или используй стандартные разделители: $формула$ и $$формула$$
 
-ВОПРОС: {question}
+    Примеры:
+    - Производная функции: \\(f'(x) = \\lim_{{h \\to 0}} \\frac{{f(x+h)-f(x)}}{{h}}\\)
+    - Интеграл: \\[\\int_a^b f(x) dx\\]
 
-ОТВЕТ (используй информацию из учебников если она есть, если нет — объясни своими словами):
-"""
+    ИНФОРМАЦИЯ ИЗ УЧЕБНИКОВ:
+    {context}
+
+    ВОПРОС: {question}
+
+    ОТВЕТ (используй информацию из учебников если она есть, если нет — объясни своими словами, используй формулы в LaTeX):
+    """
         else:
             system_prompt = f"""Ты — преподаватель математики. Отвечай понятно и подробно.
 
-ВОПРОС: {question}
+    ИСПОЛЬЗУЙ LaTeX ДЛЯ МАТЕМАТИЧЕСКИХ ФОРМУЛ:
+    - Для встроенных формул: \\(формула\\)
+    - Для формул на отдельной строке: \\[формула\\]
 
-ОТВЕТ:
-"""
+    ВОПРОС: {question}
+
+    ОТВЕТ:
+    """
         
         # Отправляем запрос к DeepSeek
         api_key = st.secrets.get("DEEPSEEK_API_KEY", os.getenv("DEEPSEEK_API_KEY"))
@@ -290,6 +316,7 @@ def main():
     
     with col1:
         if st.button("🎯 Получить ответ", type="primary", use_container_width=True):
+            # В функции main(), где показывается ответ:
             if question.strip():
                 with st.spinner("🔍 Ищу информацию в учебниках..."):
                     start_time = time.time()
@@ -308,7 +335,41 @@ def main():
                     # Показываем ответ
                     st.markdown(f"### 📚 Ответ ({elapsed:.1f} сек)")
                     st.markdown("---")
-                    st.markdown(answer)
+                    
+                    # Отображаем ответ в контейнере с id для JavaScript
+                    answer_container = st.empty()
+                    answer_container.markdown(answer, unsafe_allow_html=True)
+                    
+                    # JavaScript для рендеринга формул в новом контенте
+                    st.markdown("""
+                    <script>
+                    // Функция для рендеринга математических формул
+                    function renderMathInContainer() {
+                        if (typeof renderMathInElement !== 'undefined') {
+                            renderMathInElement(document.body, {
+                                delimiters: [
+                                    {left: '$$', right: '$$', display: true},
+                                    {left: '$', right: '$', display: false},
+                                    {left: '\\(', right: '\\)', display: false},
+                                    {left: '\\[', right: '\\]', display: true}
+                                ],
+                                throwOnError: false,
+                                trust: true
+                            });
+                        }
+                    }
+                    
+                    // Вызываем после загрузки DOM и при изменениях
+                    if (document.readyState === 'loading') {
+                        document.addEventListener('DOMContentLoaded', renderMathInContainer);
+                    } else {
+                        renderMathInContainer();
+                    }
+                    
+                    // Также рендерим формулы после обновления Streamlit
+                    setTimeout(renderMathInContainer, 100);
+                    </script>
+                    """, unsafe_allow_html=True)
                     
                     # Кнопка копирования
                     st.code(answer, language="markdown")
