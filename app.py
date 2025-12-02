@@ -373,8 +373,9 @@ def main():
     with col1:
         if st.button("🎯 Получить ответ", type="primary", use_container_width=True):
             if question.strip():
+                answer = None
+                elapsed = 0
                 with st.spinner("🔍 Ищу информацию в учебниках..."):
-                    
                     def get_ai_answer(assistant, question):
                         start_time = time.time()
                         ans = assistant.ask(question)
@@ -390,21 +391,21 @@ def main():
                             answer = "❌ Время ожидания ответа превышено."
                             elapsed = 0
 
-                    # --- Обновляем session_state до rerun ---
-                    if "history" not in st.session_state:
-                        st.session_state.history = []
+                # --- Обновляем session_state ---
+                if "history" not in st.session_state:
+                    st.session_state.history = []
 
-                    st.session_state.history.append({
-                        "question": question,
-                        "answer": answer,
-                        "time": elapsed
-                    })
+                st.session_state.history.append({
+                    "question": question,
+                    "answer": answer,
+                    "time": elapsed
+                })
+                st.session_state.last_answer = answer
+                st.session_state.last_time = elapsed
+                st.session_state.question = question
 
-                    st.session_state.last_answer = answer
-                    st.session_state.last_time = elapsed
-                    st.session_state.question = question
-
-                    st.experimental_rerun()  # корректная перезагрузка
+                # --- Вне spinners/rerun вызываем экспериментальный rerun ---
+                st.experimental_rerun()
             else:
                 st.warning("⚠️ Введите вопрос")
     
