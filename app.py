@@ -297,6 +297,8 @@ def render_math_answer(answer: str):
     return html
 
 def main():
+    rerun_flag = False
+    example_rerun_flag = False
     st.markdown('<h1 class="main-header">🎓 Математический Ассистент</h1>', unsafe_allow_html=True)
     st.markdown('<p style="text-align: center; color: #666;">AI-помощник по математике на основе ваших учебников</p>', unsafe_allow_html=True)
     
@@ -485,8 +487,8 @@ def main():
             """
             st.markdown(render_math_answer(test_math), unsafe_allow_html=True)
 
-            if rerun_flag or example_rerun_flag:
-                st.experimental_rerun()
+    if rerun_flag or example_rerun_flag:
+        st.experimental_rerun()
 
 if __name__ == "__main__":
     main()
