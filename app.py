@@ -10,6 +10,7 @@ import hashlib
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 import io
+import re
 
 # ========== CONFIGURATION ==========
 st.set_page_config(
@@ -360,6 +361,20 @@ def create_pdf(answer: str) -> bytes:
     buffer.seek(0)
     return buffer.getvalue()
 
+def parse_latex_tasks(raw):
+    tasks = []
+
+    # 1. Найти все LaTeX-блоки \[ ... \]
+    blocks = re.findall(r"\\\[(.*?)\\\]", raw, flags=re.S)
+
+    for block in blocks:
+        # 2. Найти \text{ЗАДАЧА N: ...}
+        match = re.search(r"\\text\{ЗАДАЧА\s*\d+:\s*(.*?)\}", block)
+        if match:
+            tasks.append(match.group(1).strip())
+
+    return tasks
+
 def generate_test(topic: str, count: int, difficulty: str, style: str, api_key: str):
     prompt = f"""
 Ты — генератор экзаменационных задач.
@@ -617,13 +632,7 @@ def main():
                     raw = generate_test(topic, count, difficulty, style, api_key)
 
                 # Парсим задачи
-                tasks = []
-                for line in raw.split("\n"):
-                    if line.strip().startswith("ЗАДАЧА"):
-                        try:
-                            tasks.append(line.split(":", 1)[1].strip())
-                        except:
-                            pass
+                tasks = parse_latex_tasks(raw)
 
                 if not tasks:
                     st.error("❌ Не удалось распарсить задачи.")
