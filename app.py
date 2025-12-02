@@ -381,36 +381,37 @@ def generate_test(topic: str, count: int, difficulty: str, style: str, api_key: 
 Difficulty: {difficulty}.
 Style: {style}.
 
-CRITICAL FORMATTING RULES:
-1. EACH problem MUST start with "PROBLEM X:" where X is the problem number (1, 2, 3, etc.)
-2. ALL mathematical expressions MUST be in LaTeX:
+CRITICAL FORMATTING RULES - YOU MUST FOLLOW THESE EXACTLY:
+1. EACH and EVERY problem MUST start with EXACTLY "PROBLEM X:" where X is the problem number (1, 2, 3, etc.)
+2. Do NOT skip the "PROBLEM X:" prefix for any problem
+3. ALL mathematical expressions MUST be in LaTeX:
    - Inline formulas: \\(formula\\)
    - Displayed formulas: $$formula$$
-3. Output format MUST be:
+4. Output format MUST be EXACTLY:
    PROBLEM 1: [full problem statement with LaTeX]
    PROBLEM 2: [full problem statement with LaTeX]
    ...
    PROBLEM {count}: [full problem statement with LaTeX]
-4. No solutions, only problem statements.
-5. Each problem should be on a separate line or clearly separated.
+5. No solutions, only problem statements.
+6. Each problem should be on a separate line.
 
-Example of CORRECT format:
-PROBLEM 1: Find the derivative of \(f(x) = x^2 \sin(x)\) at \(x = \pi\).
-PROBLEM 2: Calculate the integral: $$\int_0^1 (3x^2 + 2x + 1) dx$$
-PROBLEM 3: Solve the differential equation: $$\frac{{d^2y}}{{dx^2}} + 3\frac{{dy}}{{dx}} + 2y = 0$$
+Here is the EXACT format you MUST use:
+PROBLEM 1: Find the derivative of \\(f(x) = x^2 \\sin(x)\\) at \\(x = \\pi\\).
+PROBLEM 2: Calculate the integral: $$\\int_0^1 (3x^2 + 2x + 1) dx$$
+PROBLEM 3: Solve the differential equation: $$\\frac{{d^2y}}{{dx^2}} + 3\\frac{{dy}}{{dx}} + 2y = 0$$
 
-IMPORTANT: Use double curly braces {{ }} for LaTeX expressions that need braces in Python strings.
+IMPORTANT: If you don't start each problem with "PROBLEM X:", the system cannot parse it correctly.
 
-Generate {count} problems following EXACTLY this format."""
+Generate exactly {count} problems following this EXACT format."""
 
     payload = {
         "model": "deepseek-chat",
         "messages": [
-            {"role": "system", "content": "You are a mathematics exam problem generator. You MUST output problems starting with 'PROBLEM X:' for each problem. Use LaTeX for ALL mathematical expressions."},
+            {"role": "system", "content": "You are a mathematics exam problem generator. You MUST output EVERY problem starting with 'PROBLEM X:' where X is the number. This is critical for parsing. Never skip the PROBLEM X: prefix."},
             {"role": "user", "content": prompt}
         ],
         "max_tokens": 3000,
-        "temperature": 0.1  # Низкая температура для более стабильного формата
+        "temperature": 0.05  # Еще ниже температура для строгого формата
     }
 
     response = requests.post(
@@ -482,7 +483,7 @@ Score: 1/2
     return response.json()["choices"][0]["message"]["content"]
 
 def parse_test_problems(raw_text: str) -> List[str]:
-    """Parse generated test problems from raw text"""
+    """Parse generated test problems from raw text with multiple strategies"""
     problems = []
     
     if not raw_text:
@@ -501,8 +502,71 @@ def parse_test_problems(raw_text: str) -> List[str]:
                 clean_lines.append(line)
         raw_text = "\n".join(clean_lines)
     
+    # Стратегия 1: Ищем строки, начинающиеся с PROBLEM X:
     lines = raw_text.strip().split("\n")
     current_problem = ""
+    problem_number = 1
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Проверяем, начинается ли строка с PROBLEM X: (с учетом разных форматов)
+        problem_pattern = re.compile(r'^(PROBLEM|Problem)\s*(\d+)\s*[:.]\s*(.+)', re.IGNORECASE)
+        match = problem_pattern.match(line)
+        
+        if match:
+            # Если уже есть собранная задача, добавляем ее
+            if current_problem:
+                problems.append(current_problem.strip())
+            
+            # Начинаем новую задачу
+            current_problem = match.group(3).strip()
+            expected_number = int(match.group(2))
+            
+            # Проверяем порядок номеров
+            if expected_number != problem_number:
+                st.warning(f"⚠️ Problem numbering mismatch: expected {problem_number}, got {expected_number}")
+            problem_number += 1
+        elif current_problem:
+            # Продолжаем собирать текущую задачу
+            current_problem += " " + line
+    
+    # Добавляем последнюю задачу
+    if current_problem:
+        problems.append(current_problem.strip())
+    
+    # Стратегия 2: Если не нашли PROBLEM X:, ищем другие форматы
+    if not problems:
+        # Ищем задачи в формате "1. ...", "2. ..."
+        pattern = r'(?:\d+[\.:]\s*)(.+?)(?=(?:\s*\d+[\.:]\s*|$))'
+        matches = re.findall(pattern, raw_text, re.DOTALL)
+        if matches:
+            problems = [match.strip() for match in matches if match.strip()]
+    
+    # Стратегия 3: Разделяем по пустым строкам если задачи длинные
+    if not problems and "\n\n" in raw_text:
+        problems = [p.strip() for p in raw_text.strip().split("\n\n") if p.strip() and len(p.strip()) > 20]
+    
+    # Стратегия 4: Просто берем первые N непустых строк
+    if not problems:
+        lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
+        if lines:
+            # Фильтруем слишком короткие строки (меньше 10 символов)
+            problems = [line for line in lines if len(line) > 10]
+    
+    return problems
+
+def format_ai_response_for_display(text: str) -> str:
+    """Format AI response for better display in Streamlit"""
+    if not text:
+        return text
+    
+    # Добавляем PROBLEM X: если их нет
+    lines = text.strip().split("\n")
+    formatted_lines = []
+    problem_count = 0
     
     for line in lines:
         line = line.strip()
@@ -510,41 +574,13 @@ def parse_test_problems(raw_text: str) -> List[str]:
             continue
         
         # Проверяем, начинается ли строка с номера задачи
-        if (re.match(r'^(PROBLEM|Problem|QUESTION|Question|EXERCISE|Exercise|TASK|Task)\s*\d+\s*[:.]', line, re.IGNORECASE) or
-            re.match(r'^\d+[\.:\)]\s', line)):
-            
-            # Если уже есть собранная задача, добавляем ее
-            if current_problem:
-                problems.append(current_problem.strip())
-                current_problem = ""
-            
-            # Извлекаем текст после номера задачи
-            match = re.match(r'^(?:.*?\d+\s*[\.:\)]\s*)(.+)', line)
-            if match:
-                current_problem = match.group(1).strip()
-            else:
-                current_problem = line
-        elif current_problem:
-            # Продолжаем собирать текущую задачу
-            current_problem += " " + line
+        if re.match(r'^\d+[\.:]', line) or re.match(r'^(PROBLEM|Problem)', line, re.IGNORECASE):
+            problem_count += 1
+            formatted_lines.append(f"**Problem {problem_count}:** {line}")
         else:
-            # Если строка не начинается с номера, но содержит математику, начинаем новую задачу
-            if "$$" in line or "\\(" in line or "\\[" in line:
-                current_problem = line
+            formatted_lines.append(line)
     
-    # Добавляем последнюю задачу
-    if current_problem:
-        problems.append(current_problem.strip())
-    
-    # Если ничего не нашли, пытаемся разделить по другим паттернам
-    if not problems:
-        # Паттерн для строк вида "1. ...", "2. ...", "a) ...", "b) ..."
-        pattern = r'(?:\d+[\.:]|[a-zA-Z]\))\s*(.+?)(?=(?:\s*\d+[\.:]|\s*[a-zA-Z]\)|$))'
-        matches = re.findall(pattern, raw_text, re.DOTALL)
-        if matches:
-            problems = [match.strip() for match in matches if match.strip()]
-    
-    return problems
+    return "\n\n".join(formatted_lines)
 
 def main():
     st.markdown('<h1 class="main-header">🎓 Mathematics Assistant</h1>', unsafe_allow_html=True)
@@ -753,21 +789,25 @@ def main():
             if tasks:
                 st.markdown(f"**Total problems: {len(tasks)}**")
                 
-                for i, task in enumerate(tasks, 1):
-                    if i > 20:  # Ограничим количество задач
-                        break
-                        
-                    st.markdown(f"### 🧩 Problem {i}")
-                    # Убираем возможные префиксы если они есть
-                    clean_task = re.sub(r'^(PROBLEM|Problem|QUESTION|Question|EXERCISE|Exercise|TASK|Task)\s*\d+\s*[:.]\s*', '', task, flags=re.IGNORECASE)
-                    clean_task = re.sub(r'^\d+[\.:\)]\s*', '', clean_task)
+                # В секции отображения задач добавьте:
+            for i, task in enumerate(tasks, 1):
+                if i > 20:
+                    break
                     
-                    st.markdown(render_math_answer(clean_task.strip()), unsafe_allow_html=True)
-                    user_answers[i] = st.text_area(f"Your answer for Problem {i}", 
-                                                key=f"answer_{i}",
-                                                height=100,
-                                                placeholder="Enter your solution here...")
+                st.markdown(f"### 🧩 Problem {i}")
                 
+                # Очищаем задачу
+                clean_task = clean_problem_text(task)
+                
+                # Форматируем для лучшего отображения
+                display_task = format_ai_response_for_display(clean_task)
+                
+                st.markdown(render_math_answer(display_task), unsafe_allow_html=True)
+                user_answers[i] = st.text_area(f"Your answer for Problem {i}", 
+                                            key=f"answer_{i}",
+                                            height=120,  # Увеличим высоту
+                                            placeholder="Enter your solution here (use LaTeX for math)...")
+                            
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
