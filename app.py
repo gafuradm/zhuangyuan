@@ -305,20 +305,60 @@ def save_history(history):
         json.dump(history, f, ensure_ascii=False, indent=2)
 
 def create_pdf(answer: str) -> bytes:
+    # Создаем буфер для PDF
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=letter)
-
-    text = pdf.beginText(40, 750)
-    text.setFont("Helvetica", 11)
-
-    for line in answer.split("\n"):
-        text.textLine(line)
-
-    pdf.drawText(text)
+    
+    # Устанавливаем позицию для текста
+    y_position = 750
+    line_height = 14
+    
+    # Разбиваем текст на строки
+    lines = answer.split("\n")
+    
+    # Добавляем заголовок
+    pdf.setFont("Helvetica-Bold", 16)
+    pdf.drawString(40, y_position, "Mathematics Assistant - Answer")
+    y_position -= 30
+    
+    # Основной текст
+    pdf.setFont("Helvetica", 12)
+    
+    for line in lines:
+        # Если текст слишком длинный, разбиваем на несколько строк
+        if len(line) > 100:
+            words = line.split()
+            current_line = ""
+            for word in words:
+                if len(current_line + " " + word) <= 100:
+                    current_line += " " + word if current_line else word
+                else:
+                    if y_position < 50:  # Новая страница
+                        pdf.showPage()
+                        pdf.setFont("Helvetica", 12)
+                        y_position = 750
+                    pdf.drawString(40, y_position, current_line)
+                    y_position -= line_height
+                    current_line = word
+            if current_line:
+                if y_position < 50:
+                    pdf.showPage()
+                    pdf.setFont("Helvetica", 12)
+                    y_position = 750
+                pdf.drawString(40, y_position, current_line)
+                y_position -= line_height
+        else:
+            if y_position < 50:
+                pdf.showPage()
+                pdf.setFont("Helvetica", 12)
+                y_position = 750
+            pdf.drawString(40, y_position, line)
+            y_position -= line_height
+    
     pdf.showPage()
     pdf.save()
     buffer.seek(0)
-    return buffer.read()
+    return buffer.getvalue()
 
 def main():
     st.markdown('<h1 class="main-header">🎓 Mathematics Assistant</h1>', unsafe_allow_html=True)
