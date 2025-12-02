@@ -10,6 +10,7 @@ import hashlib
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 import io
+import re
 
 # ========== CONFIGURATION ==========
 st.set_page_config(
@@ -606,62 +607,131 @@ def main():
             st.error("❌ No API key found.")
             return
 
-        st.title("📝 Test Maker — генератор экзаменов")
-
-        # Состояния
+        st.title("📝 Test Maker - Exam Generator")
+        
+        # States
         if "test_tasks" not in st.session_state:
             st.session_state.test_tasks = None
+        if "parsed_tasks" not in st.session_state:
+            st.session_state.parsed_tasks = []
 
-        # Если тест еще не создан
+        # If test not created yet
         if st.session_state.test_tasks is None:
-            st.subheader("Создать тест")
-
-            topic = st.text_input("📌 Тема", "Интегралы")
-            count = st.number_input("🔢 Кол-во задач", 1, 30, 10)
-            difficulty = st.selectbox("🔥 Сложность", ["Легко", "Средне", "Сложно", "Олимпиада"])
-            style = st.selectbox("📖 Стиль задач", ["Авторские", "Из учебников", "Смешанные"])
-
-            if st.button("🎯 Сгенерировать тест"):
-                with st.spinner("ИИ генерирует задачи..."):
+            st.subheader("Create Test")
+            
+            topic = st.text_input("📌 Topic", "Integrals")
+            count = st.number_input("🔢 Number of problems", 1, 30, 10)
+            difficulty = st.selectbox("🔥 Difficulty", ["Easy", "Medium", "Hard", "Olympiad"])
+            style = st.selectbox("📖 Problem style", ["Original", "From textbooks", "Mixed"])
+            
+            if st.button("🎯 Generate Test"):
+                with st.spinner("AI is generating problems..."):
                     raw = generate_test(topic, count, difficulty, style, api_key)
-
-                # Парсим задачи
-                tasks = []
-                for line in raw.split("\n"):
-                    if line.strip().startswith("ЗАДАЧА"):
-                        try:
-                            tasks.append(line.split(":", 1)[1].strip())
-                        except:
-                            pass
-
-                if not tasks:
-                    st.error("❌ Не удалось распарсить задачи.")
-                else:
-                    st.session_state.test_tasks = tasks
-                    st.rerun()
-
-        # Если тест уже создан
-        else:
-            st.subheader("📘 Ваш тест")
-
-            tasks = st.session_state.test_tasks
-            user_answers = {}
-
+                    st.session_state.test_tasks = raw
+                    
+                    # Parse problems - ИЩЕМ НА АНГЛИЙСКОМ
+                    tasks = []
+                    lines = raw.split("\n")
+                    
+                    for line in lines:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        
+                        # Проверяем несколько форматов
+                        if (line.upper().startswith("PROBLEM") or 
+                            line.upper().startswith("QUESTION") or
+                            line.upper().startswith("EXERCISE") or
+                            (line[0].isdigit() and (":" in line or "." in line))):
+                            
+                            try:
+                                # Пробуем разные разделители
+                                if ":" in line:
+                                    task_text = line.split(":", 1)[1].strip()
+                                elif "." in line:
+                                    task_text = line.split(".", 1)[1].strip()
+                                elif ")" in line:
+                                    task_text = line.split(")", 1)[1].strip()
+                                else:
+                                    # Убираем номер задачи в начале строки
+                                    words = line.split()
+                                    if words[0].replace(".", "").isdigit():
+                                        task_text = " ".join(words[1:])
+                                    else:
+                                        task_text = line
+                                
+                                if task_text:
+                                    tasks.append(task_text)
+                            except Exception as e:
+                                st.warning(f"Could not parse line: {line}")
+                    
+                    if not tasks:
+                        # Попробуем другой подход - разделить по номерам
+                        import re
+                        # Ищем все, что начинается с цифры и точки/двоеточия
+                        pattern = r'\d+[\.:]\s*(.+?)(?=\s*\d+[\.:]|$)'
+                        matches = re.findall(pattern, raw, re.DOTALL)
+                        if matches:
+                            tasks = [match.strip() for match in matches]
+                    
+                    st.session_state.parsed_tasks = tasks
+                    
+                    if not tasks:
+                        st.error("❌ Could not parse problems. Showing raw output:")
+                        st.text(raw)
+                        # Даже если не распарсилось, сохраним raw для отладки
+                        st.session_state.parsed_tasks = [raw]
+                    else:
+                        st.success(f"✅ Generated {len(tasks)} problems!")
+                        st.rerun()
+    
+    # If test already created
+    else:
+        st.subheader("📘 Your Test")
+        
+        tasks = st.session_state.parsed_tasks
+        user_answers = {}
+        
+        if tasks:
+            # Проверяем, не является ли tasks одним большим текстом
+            if len(tasks) == 1 and "\n" in tasks[0]:
+                # Попробуем разделить на отдельные задачи
+                single_task = tasks[0]
+                # Разделим по строкам, начинающимся с цифр
+                import re
+                subtasks = re.split(r'\n\s*\d+[\.:\)]\s*', single_task)
+                if len(subtasks) > 1:
+                    tasks = [t.strip() for t in subtasks if t.strip()]
+            
             for i, task in enumerate(tasks, 1):
-                st.markdown(f"### 🧩 Задача {i}")
-                st.markdown(task)
-                user_answers[i] = st.text_area(f"Ответ {i}", key=f"answer_{i}")
-
-            if st.button("✅ Проверить ответы"):
-                with st.spinner("ИИ проверяет..."):
-                    result = check_answers(tasks, user_answers, api_key)
-
-                st.markdown("### 📊 Результаты")
-                st.markdown(render_math_answer(result), unsafe_allow_html=True)
-
-            if st.button("🔄 Новый тест"):
-                st.session_state.test_tasks = None
-                st.rerun()
+                if i > 20:  # Ограничим количество задач
+                    break
+                    
+                st.markdown(f"### 🧩 Problem {i}")
+                st.markdown(render_math_answer(task), unsafe_allow_html=True)
+                user_answers[i] = st.text_area(f"Your answer for Problem {i}", 
+                                             key=f"answer_{i}",
+                                             height=100)
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("✅ Check Answers", type="primary", use_container_width=True):
+                    with st.spinner("AI is checking answers..."):
+                        result = check_answers(tasks, user_answers, api_key)
+                    
+                    st.markdown("### 📊 Results")
+                    st.markdown(render_math_answer(result), unsafe_allow_html=True)
+            
+            with col2:
+                if st.button("🔄 New Test", use_container_width=True):
+                    st.session_state.test_tasks = None
+                    st.session_state.parsed_tasks = []
+                    st.rerun()
+        
+        # Show raw generated text for debugging
+        with st.expander("📄 Raw generated problems"):
+            st.text(st.session_state.test_tasks)
     
     with st.expander("ℹ️ About the System"):
         st.markdown("""
