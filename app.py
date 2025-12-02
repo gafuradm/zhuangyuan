@@ -274,24 +274,11 @@ class MathAssistant:
 def render_math_answer(answer: str):
     """Отображает ответ с поддержкой LaTeX"""
     # Оборачиваем ответ в div с классом для стилизации
+    
     html = f"""
     <div class="math-content">
         {answer}
     </div>
-    <script>
-        // Перерендерим формулы после загрузки контента
-        if (window.renderMathInElement) {{
-            renderMathInElement(document.querySelector('.math-content'), {{
-                delimiters: [
-                    {{left: '$$', right: '$$', display: true}},
-                    {{left: '$', right: '$', display: false}},
-                    {{left: '\\\\(', right: '\\\\)', display: false}},
-                    {{left: '\\\\[', right: '\\\\]', display: true}}
-                ],
-                throwOnError: false
-            }});
-        }}
-    </script>
     """
     return html
 
