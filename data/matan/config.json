@@ -1,0 +1,8 @@
+{
+  "subject": "matan",
+  "books": [
+    "matan.pdf"
+  ],
+  "chunk_count": 1190,
+  "model": "all-MiniLM-L6-v2"
+}

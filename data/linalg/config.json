@@ -1,0 +1,31 @@
+{
+  "subject": "linalg",
+  "books": [
+    "lin20.pdf",
+    "lin21.pdf",
+    "lin9.pdf",
+    "lin23.pdf",
+    "lin22.pdf",
+    "lin8.pdf",
+    "lin19.pdf",
+    "lin18.pdf",
+    "lin3.pdf",
+    "lin15.pdf",
+    "lin14.pdf",
+    "lin2.pdf",
+    "lin16.pdf",
+    "linalg.pdf",
+    "lin17.pdf",
+    "lin1.pdf",
+    "lin5.pdf",
+    "lin13.pdf",
+    "lin12.pdf",
+    "lin4.pdf",
+    "lin6.pdf",
+    "lin10.pdf",
+    "lin11.pdf",
+    "lin7.pdf"
+  ],
+  "chunk_count": 1599,
+  "model": "all-MiniLM-L6-v2"
+}
