@@ -10,10 +10,141 @@ import hashlib
 
 # ========== КОНФИГУРАЦИЯ ==========
 st.set_page_config(
-    page_title="Математический Ассистент",
+    page_title="Math Assistant",
     page_icon="📚",
     layout="wide"
 )
+
+# ========== ТЕМНАЯ ТЕМА ==========
+def apply_dark_theme():
+    """Применяет темную тему"""
+    st.markdown("""
+    <style>
+    .stApp {
+        background-color: #0E1117;
+        color: #FAFAFA;
+    }
+    
+    .main-header {
+        font-size: 2.5rem;
+        color: #60A5FA !important;
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+    
+    .subject-card {
+        background: #1E293B;
+        padding: 15px;
+        border-radius: 10px;
+        margin: 10px 0;
+        border-left: 4px solid #3B82F6;
+        color: #E2E8F0;
+    }
+    
+    .math-content {
+        font-size: 1.1em;
+        line-height: 1.8;
+        margin: 1em 0;
+        padding: 20px;
+        background-color: #1E293B;
+        border-radius: 10px;
+        border-left: 4px solid #3B82F6;
+        color: #E2E8F0;
+    }
+    
+    .math-content p {
+        margin-bottom: 1em;
+    }
+    
+    .katex-display {
+        margin: 1.5em 0 !important;
+        padding: 1em;
+        background-color: #0F172A;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+    
+    .stTextArea textarea {
+        background-color: #1E293B;
+        color: #FAFAFA;
+        border: 1px solid #334155;
+    }
+    
+    .stTextArea label {
+        color: #E2E8F0 !important;
+    }
+    
+    .stButton button {
+        width: 100%;
+        transition: all 0.3s;
+        background-color: #1E40AF;
+        color: white;
+        border: none;
+    }
+    
+    .stButton button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(59, 130, 246, 0.3);
+        background-color: #2563EB;
+    }
+    
+    .stButton button[kind="primary"] {
+        background-color: #2563EB;
+    }
+    
+    .stButton button[kind="primary"]:hover {
+        background-color: #3B82F6;
+    }
+    
+    .stExpander {
+        background-color: #1E293B;
+        border: 1px solid #334155;
+        border-radius: 8px;
+    }
+    
+    .stExpander summary {
+        color: #E2E8F0;
+    }
+    
+    /* Стили для светлой темы */
+    .light-theme .stApp {
+        background-color: #FFFFFF;
+        color: #0F172A;
+    }
+    
+    .light-theme .main-header {
+        color: #1E3A8A !important;
+    }
+    
+    .light-theme .subject-card {
+        background: #f8f9fa;
+        color: #0F172A;
+    }
+    
+    .light-theme .math-content {
+        background-color: #f8f9fa;
+        color: #0F172A;
+    }
+    
+    .light-theme .katex-display {
+        background-color: white;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .light-theme .stTextArea textarea {
+        background-color: white;
+        color: #0F172A;
+        border: 1px solid #CBD5E1;
+    }
+    
+    .light-theme .stExpander {
+        background-color: #f8f9fa;
+        border: 1px solid #E2E8F0;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 # Загружаем KaTeX в самом начале
 st.markdown("""
@@ -35,62 +166,9 @@ st.markdown("""
 </script>
 """, unsafe_allow_html=True)
 
-# CSS стили
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 2.5rem;
-        color: #1E3A8A;
-        text-align: center;
-        margin-bottom: 1rem;
-    }
-    .subject-card {
-        background: #f8f9fa;
-        padding: 15px;
-        border-radius: 10px;
-        margin: 10px 0;
-        border-left: 4px solid #3B82F6;
-    }
-    .stButton button {
-        width: 100%;
-        transition: all 0.3s;
-    }
-    .stButton button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-    }
-    /* Стили для математического контента */
-    .math-content {
-        font-size: 1.1em;
-        line-height: 1.8;
-        margin: 1em 0;
-        padding: 20px;
-        background-color: #f8f9fa;
-        border-radius: 10px;
-        border-left: 4px solid #3B82F6;
-    }
-    .math-content p {
-        margin-bottom: 1em;
-    }
-    .katex-display {
-        margin: 1.5em 0 !important;
-        padding: 1em;
-        background-color: white;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        overflow-x: auto;
-        overflow-y: hidden;
-    }
-    .katex {
-        font-size: 1.1em !important;
-        padding: 2px 4px;
-    }
-</style>
-""", unsafe_allow_html=True)
-
 # ========== МОДЕЛЬ ЭМБЕДДИНГОВ ==========
 class SimpleEmbedder:
-    """Простая модель без интернета"""
+    """Simple offline model"""
     def __init__(self, dim=384):
         self.dim = dim
     
@@ -119,16 +197,16 @@ class MathAssistant:
         self.load_subjects()
     
     def load_subjects(self):
-        """Загружает все предметы"""
+        """Loads all subjects"""
         if not os.path.exists(self.data_dir):
-            st.error(f"❌ Папка '{self.data_dir}' не найдена!")
+            st.error(f"❌ Folder '{self.data_dir}' not found!")
             return
         
         subject_folders = [d for d in os.listdir(self.data_dir) 
                           if os.path.isdir(os.path.join(self.data_dir, d))]
         
         if not subject_folders:
-            st.warning("⚠️ В папке data/ нет предметов")
+            st.warning("⚠️ No subjects found in data/ folder")
             return
         
         for subject_name in subject_folders:
@@ -137,7 +215,7 @@ class MathAssistant:
                 
                 required_files = ["config.json", "index.hnsw", "chunks.npy"]
                 if not all(os.path.exists(os.path.join(subject_path, f)) for f in required_files):
-                    st.warning(f"⚠️ В папке '{subject_name}' не хватает файлов")
+                    st.warning(f"⚠️ Missing files in '{subject_name}' folder")
                     continue
                 
                 with open(os.path.join(subject_path, "config.json"), 'r', encoding='utf-8') as f:
@@ -157,16 +235,17 @@ class MathAssistant:
                 }
                 
             except Exception as e:
-                st.error(f"❌ Ошибка загрузки '{subject_name}': {str(e)}")
+                st.error(f"❌ Error loading '{subject_name}': {str(e)}")
     
     def detect_subject(self, question: str) -> List[str]:
-        """Определяет предмет вопроса"""
+        """Detects the subject of the question"""
         question_lower = question.lower()
         subject_keywords = {
-            "matan": ["матанализ", "мат анализ", "дифференциал", "интеграл", 
-                     "предел", "ряд", "функция", "производная", "дифференцирование"],
-            "linalg": ["линейн", "матриц", "вектор", "определитель", 
-                      "собствен", "линейное пространство", "линейно", "алгебр"]
+            "matan": ["calculus", "derivative", "integral", 
+                     "limit", "series", "function", "differentiation",
+                     "differential", "math analysis"],
+            "linalg": ["linear", "matrix", "vector", "determinant", 
+                      "eigen", "linear space", "algebra", "linear algebra"]
         }
         
         relevant = []
@@ -181,16 +260,16 @@ class MathAssistant:
         return relevant if relevant else list(self.subjects.keys())
     
     def search_in_subject(self, subject_name: str, query: str, top_k: int = 3):
-        """Ищет в конкретном предмете"""
+        """Searches within a specific subject"""
         subject_data = self.subjects[subject_name]
         query_emb = self.model.encode([query])
         indices, distances = subject_data["index"].knn_query(query_emb, k=top_k)
         return [subject_data["chunks"][idx] for idx in indices[0]]
     
     def ask(self, question: str) -> str:
-        """Основной метод для ответов"""
+        """Main method for answering questions"""
         if not self.subjects:
-            return "❌ Нет загруженных учебных материалов."
+            return "❌ No learning materials loaded."
         
         relevant_subjects = self.detect_subject(question)
         
@@ -207,43 +286,43 @@ class MathAssistant:
         context = "\n".join(all_contexts)
         
         if context.strip():
-            system_prompt = f"""Ты — преподаватель математики. Отвечай на русском языке.
+            system_prompt = f"""You are a mathematics teacher. Respond in English.
 
             FORMAT RULE:
-Do NOT output KaTeX configuration objects such as {left:'', right:''}.
+Do NOT output KaTeX configuration objects such as {{left:'', right:''}}.
 Only output pure LaTeX inside $...$ or \[...\].
 
-ВАЖНО: Все математические формулы должны быть записаны в формате LaTeX:
-- Для формул в строке: \\(формула\\)
-- Для вынесенных формул: $$формула$$
-- Используй стандартные обозначения LaTeX
+IMPORTANT: All mathematical formulas must be written in LaTeX format:
+- For inline formulas: \\(formula\\)
+- For displayed formulas: $$formula$$
+- Use standard LaTeX notation
 
-Пример:
-Производная функции: \\(f'(x) = \\lim_{{h \\to 0}} \\frac{{f(x+h)-f(x)}}{{h}}\\)
-Интеграл: $$\\int_a^b f(x) dx$$
+Example:
+Function derivative: \\(f'(x) = \\lim_{{h \\to 0}} \\frac{{f(x+h)-f(x)}}{{h}}\\)
+Integral: $$\\int_a^b f(x) dx$$
 
-ИНФОРМАЦИЯ ИЗ УЧЕБНИКОВ:
+TEXTBOOK INFORMATION:
 {context}
 
-ВОПРОС: {question}
+QUESTION: {question}
 
-ОТВЕТ (обязательно используй LaTeX для всех математических выражений):
+ANSWER (always use LaTeX for all mathematical expressions):
 """
         else:
-            system_prompt = f"""Ты — преподаватель математики. Отвечай понятно и подробно на русском языке.
+            system_prompt = f"""You are a mathematics teacher. Respond clearly and in detail in English.
 
-ВСЕ математические формулы записывай в LaTeX:
-- Встроенные: \\(формула\\)
-- Вынесенные: $$формула$$
+ALL mathematical formulas must be written in LaTeX:
+- Inline: \\(formula\\)
+- Displayed: $$formula$$
 
-ВОПРОС: {question}
+QUESTION: {question}
 
-ОТВЕТ:
+ANSWER:
 """
         
         api_key = st.secrets.get("DEEPSEEK_API_KEY", os.getenv("DEEPSEEK_API_KEY"))
         if not api_key:
-            return "❌ API ключ не настроен. Добавьте DEEPSEEK_API_KEY в секреты Streamlit."
+            return "❌ API key not configured. Add DEEPSEEK_API_KEY to Streamlit secrets."
         
         payload = {
             "model": "deepseek-chat",
@@ -269,16 +348,14 @@ Only output pure LaTeX inside $...$ or \[...\].
             if response.status_code == 200:
                 return response.json()["choices"][0]["message"]["content"]
             else:
-                return f"❌ Ошибка API ({response.status_code}): {response.text}"
+                return f"❌ API error ({response.status_code}): {response.text}"
                 
         except Exception as e:
-            return f"❌ Ошибка соединения: {str(e)}"
+            return f"❌ Connection error: {str(e)}"
 
 # ========== ИНТЕРФЕЙС STREAMLIT ==========
 def render_math_answer(answer: str):
-    """Отображает ответ с поддержкой LaTeX"""
-    # Оборачиваем ответ в div с классом для стилизации
-    
+    """Displays answer with LaTeX support"""
     html = f"""
     <div class="math-content">
         {answer}
@@ -302,8 +379,27 @@ def save_history(history):
         json.dump(history, f, ensure_ascii=False, indent=2)
 
 def main():
-    st.markdown('<h1 class="main-header">🎓 Математический Ассистент</h1>', unsafe_allow_html=True)
-    st.markdown('<p style="text-align: center; color: #666;">AI-помощник по математике на основе ваших учебников</p>', unsafe_allow_html=True)
+    # Тема по умолчанию (темная)
+    if "dark_theme" not in st.session_state:
+        st.session_state.dark_theme = True
+    
+    # Применяем тему
+    if st.session_state.dark_theme:
+        apply_dark_theme()
+    else:
+        st.markdown('<div class="light-theme">', unsafe_allow_html=True)
+        apply_dark_theme()
+    
+    st.markdown('<h1 class="main-header">🎓 Math Assistant</h1>', unsafe_allow_html=True)
+    st.markdown('<p style="text-align: center; color: #94A3B8;">AI math assistant based on your textbooks</p>', unsafe_allow_html=True)
+    
+    # Кнопка переключения темы
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col3:
+        theme_label = "🌙 Dark" if st.session_state.dark_theme else "☀️ Light"
+        if st.button(theme_label, key="theme_toggle"):
+            st.session_state.dark_theme = not st.session_state.dark_theme
+            st.rerun()
     
     # Загружаем историю всегда (независимо от assistant)
     if "history" not in st.session_state:
@@ -311,15 +407,14 @@ def main():
 
     # Загружаем ассистента только один раз
     if "assistant" not in st.session_state:
-        with st.spinner("🔄 Загружаю учебные материалы..."):
+        with st.spinner("🔄 Loading learning materials..."):
             st.session_state.assistant = MathAssistant("data")
-
     
     assistant = st.session_state.assistant
     
     with st.sidebar:
         st.image("https://cdn-icons-png.flaticon.com/512/2103/2103655.png", width=100)
-        st.markdown("### 📚 Загруженные предметы")
+        st.markdown("### 📚 Loaded Subjects")
         
         if assistant.subjects:
             for subject_name, data in assistant.subjects.items():
@@ -327,14 +422,14 @@ def main():
                     st.markdown(f"""
                     <div class="subject-card">
                     <strong>{data['config']['subject']}</strong><br>
-                    📖 {len(data['config']['books'])} книг<br>
-                    🧩 {len(data['chunks'])} фрагментов
+                    📖 {len(data['config']['books'])} books<br>
+                    🧩 {len(data['chunks'])} chunks
                     </div>
                     """, unsafe_allow_html=True)
         else:
-            st.warning("⚠️ Учебные материалы не загружены")
+            st.warning("⚠️ Learning materials not loaded")
             st.info("""
-            Создайте структуру:
+            Create structure:
             ```
             data/
             ├── matan/
@@ -349,13 +444,13 @@ def main():
             """)
         
         st.markdown("---")
-        st.markdown("### 💡 Примеры вопросов")
+        st.markdown("### 💡 Example Questions")
         
         examples = [
-            "Что такое производная?",
-            "Как найти определитель матрицы?",
-            "Объясни правило Лопиталя",
-            "Что такое собственные значения?"
+            "What is a derivative?",
+            "How to find matrix determinant?",
+            "Explain L'Hopital's rule",
+            "What are eigenvalues?"
         ]
         
         for example in examples:
@@ -363,12 +458,12 @@ def main():
                 st.session_state.question = example
                 st.rerun()
     
-    st.markdown("### 💭 Задайте вопрос по математике")
+    st.markdown("### 💭 Ask a Math Question")
     
     question = st.text_area(
-        "Введите ваш вопрос:",
+        "Enter your question:",
         value=st.session_state.get("question", ""),
-        placeholder="Например: 'Что такое производная?' или 'Объясни метод Гаусса'",
+        placeholder="Example: 'What is a derivative?' or 'Explain Gauss method'",
         height=120,
         label_visibility="collapsed"
     )
@@ -376,9 +471,9 @@ def main():
     col1, col2, col3 = st.columns([1, 1, 1])
     
     with col1:
-        if st.button("🎯 Получить ответ", type="primary", use_container_width=True):
+        if st.button("🎯 Get Answer", type="primary", use_container_width=True):
             if question.strip():
-                with st.spinner("🔍 Ищу информацию в учебниках..."):
+                with st.spinner("🔍 Searching in textbooks..."):
                     start_time = time.time()
                     answer = assistant.ask(question)
                     elapsed = time.time() - start_time
@@ -397,79 +492,83 @@ def main():
                     st.session_state.last_time = elapsed
                     st.rerun()
             else:
-                st.warning("⚠️ Введите вопрос")
+                st.warning("⚠️ Please enter a question")
     
     with col2:
-        if st.button("🔄 Новый вопрос", use_container_width=True):
+        if st.button("🔄 New Question", use_container_width=True):
             if "last_answer" in st.session_state:
                 del st.session_state.last_answer
             st.session_state.question = ""
             st.rerun()
     
     with col3:
-        if st.button("📜 История", use_container_width=True):
+        if st.button("📜 History", use_container_width=True):
             if "history" in st.session_state and st.session_state.history:
-                st.markdown("### 📜 История вопросов")
+                st.markdown("### 📜 Question History")
                 for i, item in enumerate(reversed(st.session_state.history[-5:])):
                     with st.expander(f"❓ {item['question'][:50]}..."):
-                        st.markdown(f"**Время:** {item['time']:.1f} сек")
-                        st.markdown("**Ответ:**")
+                        st.markdown(f"**Time:** {item['time']:.1f} sec")
+                        st.markdown("**Answer:**")
                         st.markdown(render_math_answer(item["answer"][:500] + ("..." if len(item["answer"]) > 500 else "")), unsafe_allow_html=True)
             else:
-                st.info("📝 История вопросов пуста")
+                st.info("📝 History is empty")
     
     if "last_answer" in st.session_state:
-        st.markdown(f"### 📚 Ответ ({st.session_state.get('last_time', 0):.1f} сек)")
+        st.markdown(f"### 📚 Answer ({st.session_state.get('last_time', 0):.1f} sec)")
         st.markdown("---")
         
         # Отображаем ответ с поддержкой LaTeX
         st.markdown(render_math_answer(st.session_state.last_answer), unsafe_allow_html=True)
         
-        # Отладочная информация (можно скрыть)
-        with st.expander("📄 Исходный текст ответа"):
+        # Debug information (can be hidden)
+        with st.expander("📄 Raw answer text"):
             st.text(st.session_state.last_answer)
     
-    with st.expander("ℹ️ О системе"):
+    with st.expander("ℹ️ About System"):
         st.markdown("""
-        **Как работает система:**
-        1. 📚 Загружает ваши учебники (PDF → текст)
-        2. 🔍 Ищет релевантные фрагменты по вопросу
-        3. 🤖 Отправляет контекст в DeepSeek AI
-        4. 📝 Получает подробный ответ
+        **How the system works:**
+        1. 📚 Loads your textbooks (PDF → text)
+        2. 🔍 Searches for relevant chunks by question
+        3. 🤖 Sends context to DeepSeek AI
+        4. 📝 Gets detailed answer
         
-        **Поддерживаемые темы:**
-        - Математический анализ
-        - Линейная алгебра
-        - Дифференциальные уравнения
+        **Supported topics:**
+        - Mathematical analysis
+        - Linear algebra
+        - Differential equations
         
-        **Требования:**
-        - DeepSeek API ключ (добавьте в секреты Streamlit)
-        - Папка `data/` с индексами учебников
+        **Requirements:**
+        - DeepSeek API key (add to Streamlit secrets)
+        - `data/` folder with textbook indexes
         
-        **LaTeX поддержка:**
-        - Все формулы автоматически рендерятся с помощью KaTeX
-        - Используйте \\(формула\\) для встроенных формул
-        - Используйте $$формула$$ для вынесенных формул
+        **LaTeX support:**
+        - All formulas automatically rendered using KaTeX
+        - Use \\(formula\\) for inline formulas
+        - Use $$formula$$ for displayed formulas
         """)
         
-        if st.button("🧪 Проверить LaTeX рендеринг"):
+        if st.button("🧪 Test LaTeX rendering"):
             test_math = r"""
-            **Тест математических формул:**
+            **Mathematical formulas test:**
             
-            Встроенная формула: \(E = mc^2\)
+            Inline formula: \(E = mc^2\)
             
-            Формула на отдельной строке:
+            Displayed formula:
             $$
             \int_{-\infty}^{\infty} e^{-x^2} dx = \sqrt{\pi}
             $$
             
-            Производная: $$\frac{dy}{dx} = \lim_{\Delta x \to 0} \frac{f(x+\Delta x) - f(x)}{\Delta x}$$
+            Derivative: $$\frac{dy}{dx} = \lim_{\Delta x \to 0} \frac{f(x+\Delta x) - f(x)}{\Delta x}$$
             
-            Матрица: $\begin{pmatrix} a & b \\ c & d \end{pmatrix}$
+            Matrix: $\begin{pmatrix} a & b \\ c & d \end{pmatrix}$
             
-            Сумма: \(\sum_{i=1}^{n} i = \frac{n(n+1)}{2}\)
+            Sum: \(\sum_{i=1}^{n} i = \frac{n(n+1)}{2}\)
             """
             st.markdown(render_math_answer(test_math), unsafe_allow_html=True)
+    
+    # Закрываем div для светлой темы
+    if not st.session_state.dark_theme:
+        st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
