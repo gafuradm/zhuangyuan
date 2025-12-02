@@ -495,20 +495,12 @@ def extract_text_from_pdf(file):
         text += page.get_text()
     return text
 
-# --- Изображения ---
-def extract_text_from_image(file):
-    image = Image.open(file)
-    text = pytesseract.image_to_string(image, lang='eng')  # или 'rus+eng' для русского
-    return text
-
 # --- Все файлы ---
 def extract_text_from_files(files):
     combined_text = ""
     for f in files:
         if f.type == "application/pdf":
             combined_text += extract_text_from_pdf(f) + "\n"
-        elif f.type.startswith("image/"):
-            combined_text += extract_text_from_image(f) + "\n"
     return combined_text
 
 def main():
@@ -586,8 +578,8 @@ def main():
     )
 
     uploaded_files = st.file_uploader(
-    "📎 Upload PDF or image",
-    type=["pdf", "png", "jpg", "jpeg"],
+    "📎 Upload PDF (images not supported on Streamlit Cloud)",
+    type=["pdf"],
     accept_multiple_files=True)
 
     
