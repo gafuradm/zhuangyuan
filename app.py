@@ -477,7 +477,6 @@ def main():
         with st.spinner("🔄 Loading learning materials..."):
             st.session_state.assistant = MathAssistant("data")
 
-    
     assistant = st.session_state.assistant
     
     with st.sidebar:
@@ -526,81 +525,84 @@ def main():
                 st.session_state.question = example
                 st.rerun()
     
-    st.markdown("### 💭 Ask a Mathematics Question")
-    
-    question = st.text_area(
-        "Enter your question:",
-        value=st.session_state.get("question", ""),
-        placeholder="Example: 'What is a derivative?' or 'Explain Gauss elimination method'",
-        height=120,
-        label_visibility="collapsed"
-    )
-    
-    col1, col2, col3 = st.columns([1, 1, 1])
-    
-    with col1:
-        if st.button("🎯 Get Answer", type="primary", use_container_width=True):
-            if question.strip():
-                with st.spinner("🔍 Searching information in textbooks..."):
-                    start_time = time.time()
-                    answer = assistant.ask(question)
-                    elapsed = time.time() - start_time
-                    
-                    if "history" not in st.session_state:
-                        st.session_state.history = []
-                    st.session_state.history.append({
-                        "question": question,
-                        "answer": answer,
-                        "time": elapsed
-                    })
-
-                    save_history(st.session_state.history)
-                    
-                    st.session_state.last_answer = answer
-                    st.session_state.last_time = elapsed
-                    st.rerun()
-            else:
-                st.warning("⚠️ Please enter a question")
-    
-    with col2:
-        if st.button("🔄 New Question", use_container_width=True):
-            if "last_answer" in st.session_state:
-                del st.session_state.last_answer
-            st.session_state.question = ""
-            st.rerun()
-    
-    with col3:
-        if st.button("📜 History", use_container_width=True):
-            if "history" in st.session_state and st.session_state.history:
-                st.markdown("### 📜 Question History")
-                for i, item in enumerate(reversed(st.session_state.history[-5:])):
-                    with st.expander(f"❓ {item['question'][:50]}..."):
-                        st.markdown(f"**Time:** {item['time']:.1f} sec")
-                        st.markdown("**Answer:**")
-                        st.markdown(render_math_answer(item["answer"][:500] + ("..." if len(item["answer"]) > 500 else "")), unsafe_allow_html=True)
-            else:
-                st.info("📝 Question history is empty")
-    
-    if "last_answer" in st.session_state:
-        st.markdown(f"### 📚 Answer ({st.session_state.get('last_time', 0):.1f} sec)")
-        st.markdown("---")
+    # ========== CHAT PAGE ==========
+    if page == "Chat":
+        st.markdown("### 💭 Ask a Mathematics Question")
         
-        # Display answer with LaTeX support
-        st.markdown(render_math_answer(st.session_state.last_answer), unsafe_allow_html=True)
-        
-        # PDF download button
-        pdf_bytes = create_pdf(st.session_state.last_answer)
-        st.download_button(
-            label="📄 Download answer as PDF",
-            data=pdf_bytes,
-            file_name="answer.pdf",
-            mime="application/pdf"
+        question = st.text_area(
+            "Enter your question:",
+            value=st.session_state.get("question", ""),
+            placeholder="Example: 'What is a derivative?' or 'Explain Gauss elimination method'",
+            height=120,
+            label_visibility="collapsed"
         )
+        
+        col1, col2, col3 = st.columns([1, 1, 1])
+        
+        with col1:
+            if st.button("🎯 Get Answer", type="primary", use_container_width=True):
+                if question.strip():
+                    with st.spinner("🔍 Searching information in textbooks..."):
+                        start_time = time.time()
+                        answer = assistant.ask(question)
+                        elapsed = time.time() - start_time
+                        
+                        if "history" not in st.session_state:
+                            st.session_state.history = []
+                        st.session_state.history.append({
+                            "question": question,
+                            "answer": answer,
+                            "time": elapsed
+                        })
 
-        # Debug information (can be hidden)
-        with st.expander("📄 Raw answer text"):
-            st.text(st.session_state.last_answer)
+                        save_history(st.session_state.history)
+                        
+                        st.session_state.last_answer = answer
+                        st.session_state.last_time = elapsed
+                        st.rerun()
+                else:
+                    st.warning("⚠️ Please enter a question")
+        
+        with col2:
+            if st.button("🔄 New Question", use_container_width=True):
+                if "last_answer" in st.session_state:
+                    del st.session_state.last_answer
+                st.session_state.question = ""
+                st.rerun()
+        
+        with col3:
+            if st.button("📜 History", use_container_width=True):
+                if "history" in st.session_state and st.session_state.history:
+                    st.markdown("### 📜 Question History")
+                    for i, item in enumerate(reversed(st.session_state.history[-5:])):
+                        with st.expander(f"❓ {item['question'][:50]}..."):
+                            st.markdown(f"**Time:** {item['time']:.1f} sec")
+                            st.markdown("**Answer:**")
+                            st.markdown(render_math_answer(item["answer"][:500] + ("..." if len(item["answer"]) > 500 else "")), unsafe_allow_html=True)
+                else:
+                    st.info("📝 Question history is empty")
+        
+        if "last_answer" in st.session_state:
+            st.markdown(f"### 📚 Answer ({st.session_state.get('last_time', 0):.1f} sec)")
+            st.markdown("---")
+            
+            # Display answer with LaTeX support
+            st.markdown(render_math_answer(st.session_state.last_answer), unsafe_allow_html=True)
+            
+            # PDF download button
+            pdf_bytes = create_pdf(st.session_state.last_answer)
+            st.download_button(
+                label="📄 Download answer as PDF",
+                data=pdf_bytes,
+                file_name="answer.pdf",
+                mime="application/pdf"
+            )
 
+            # Debug information (can be hidden)
+            with st.expander("📄 Raw answer text"):
+                st.text(st.session_state.last_answer)
+    
+    # ========== TEST MAKER PAGE ==========
     elif page == "Test Maker":
         api_key = st.secrets.get("DEEPSEEK_API_KEY", os.getenv("DEEPSEEK_API_KEY"))
         if not api_key:
@@ -615,7 +617,7 @@ def main():
         if "parsed_tasks" not in st.session_state:
             st.session_state.parsed_tasks = []
 
-        # If test not created yet
+        # Если тест еще не создан
         if st.session_state.test_tasks is None:
             st.subheader("Create Test")
             
@@ -629,7 +631,7 @@ def main():
                     raw = generate_test(topic, count, difficulty, style, api_key)
                     st.session_state.test_tasks = raw
                     
-                    # Parse problems - ИЩЕМ НА АНГЛИЙСКОМ
+                    # Parse problems
                     tasks = []
                     lines = raw.split("\n")
                     
@@ -667,7 +669,6 @@ def main():
                     
                     if not tasks:
                         # Попробуем другой подход - разделить по номерам
-                        import re
                         # Ищем все, что начинается с цифры и точки/двоеточия
                         pattern = r'\d+[\.:]\s*(.+?)(?=\s*\d+[\.:]|$)'
                         matches = re.findall(pattern, raw, re.DOTALL)
@@ -684,55 +685,77 @@ def main():
                     else:
                         st.success(f"✅ Generated {len(tasks)} problems!")
                         st.rerun()
+        
+        # Если тест уже создан
+        else:
+            st.subheader("📘 Your Test")
+            
+            tasks = st.session_state.parsed_tasks
+            user_answers = {}
+            
+            if tasks:
+                # Проверяем, не является ли tasks одним большим текстом
+                if len(tasks) == 1 and "\n" in tasks[0]:
+                    # Попробуем разделить на отдельные задачи
+                    single_task = tasks[0]
+                    # Разделим по строкам, начинающимся с цифр
+                    subtasks = re.split(r'\n\s*\d+[\.:\)]\s*', single_task)
+                    if len(subtasks) > 1:
+                        tasks = [t.strip() for t in subtasks if t.strip()]
+                
+                for i, task in enumerate(tasks, 1):
+                    if i > 20:  # Ограничим количество задач
+                        break
+                        
+                    st.markdown(f"### 🧩 Problem {i}")
+                    st.markdown(render_math_answer(task), unsafe_allow_html=True)
+                    user_answers[i] = st.text_area(f"Your answer for Problem {i}", 
+                                                 key=f"answer_{i}",
+                                                 height=100)
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if st.button("✅ Check Answers", type="primary", use_container_width=True):
+                        with st.spinner("AI is checking answers..."):
+                            result = check_answers(tasks, user_answers, api_key)
+                        
+                        st.markdown("### 📊 Results")
+                        st.markdown(render_math_answer(result), unsafe_allow_html=True)
+                
+                with col2:
+                    if st.button("🔄 New Test", use_container_width=True):
+                        st.session_state.test_tasks = None
+                        st.session_state.parsed_tasks = []
+                        st.rerun()
+            
+            # Show raw generated text for debugging
+            with st.expander("📄 Raw generated problems"):
+                if st.session_state.test_tasks:
+                    st.text(st.session_state.test_tasks)
     
-    # If test already created
-    else:
-        st.subheader("📘 Your Test")
+    # ========== HISTORY PAGE ==========
+    elif page == "History":
+        st.title("📜 Question History")
         
-        tasks = st.session_state.parsed_tasks
-        user_answers = {}
-        
-        if tasks:
-            # Проверяем, не является ли tasks одним большим текстом
-            if len(tasks) == 1 and "\n" in tasks[0]:
-                # Попробуем разделить на отдельные задачи
-                single_task = tasks[0]
-                # Разделим по строкам, начинающимся с цифр
-                import re
-                subtasks = re.split(r'\n\s*\d+[\.:\)]\s*', single_task)
-                if len(subtasks) > 1:
-                    tasks = [t.strip() for t in subtasks if t.strip()]
-            
-            for i, task in enumerate(tasks, 1):
-                if i > 20:  # Ограничим количество задач
-                    break
+        if "history" in st.session_state and st.session_state.history:
+            for i, item in enumerate(reversed(st.session_state.history)):
+                with st.expander(f"❓ {item['question'][:100]}..."):
+                    st.markdown(f"**Time:** {item['time']:.1f} seconds")
+                    st.markdown("**Question:**")
+                    st.markdown(f"`{item['question']}`")
+                    st.markdown("**Answer:**")
+                    st.markdown(render_math_answer(item["answer"]), unsafe_allow_html=True)
                     
-                st.markdown(f"### 🧩 Problem {i}")
-                st.markdown(render_math_answer(task), unsafe_allow_html=True)
-                user_answers[i] = st.text_area(f"Your answer for Problem {i}", 
-                                             key=f"answer_{i}",
-                                             height=100)
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if st.button("✅ Check Answers", type="primary", use_container_width=True):
-                    with st.spinner("AI is checking answers..."):
-                        result = check_answers(tasks, user_answers, api_key)
-                    
-                    st.markdown("### 📊 Results")
-                    st.markdown(render_math_answer(result), unsafe_allow_html=True)
-            
-            with col2:
-                if st.button("🔄 New Test", use_container_width=True):
-                    st.session_state.test_tasks = None
-                    st.session_state.parsed_tasks = []
-                    st.rerun()
-        
-        # Show raw generated text for debugging
-        with st.expander("📄 Raw generated problems"):
-            st.text(st.session_state.test_tasks)
+                    # Кнопка для удаления записи
+                    if st.button(f"Delete this entry", key=f"delete_{i}"):
+                        st.session_state.history.pop(-(i+1))
+                        save_history(st.session_state.history)
+                        st.rerun()
+        else:
+            st.info("📝 No history yet. Ask some questions first!")
     
+    # ========== ABOUT SECTION (всегда отображается) ==========
     with st.expander("ℹ️ About the System"):
         st.markdown("""
         **How the system works:**
