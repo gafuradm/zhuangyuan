@@ -17,22 +17,9 @@ st.set_page_config(
 
 # Загружаем KaTeX в самом начале
 st.markdown("""
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8" crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05" crossorigin="anonymous"></script>
-<script>
-    document.addEventListener("DOMContentLoaded", function() {
-        renderMathInElement(document.body, {
-            delimiters: [
-                {left: '$$', right: '$$', display: true},
-                {left: '$', right: '$', display: false},
-                {left: '\\(', right: '\\)', display: false},
-                {left: '\\[', right: '\\]', display: true}
-            ],
-            throwOnError: false
-        });
-    });
-</script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
 """, unsafe_allow_html=True)
 
 # CSS стили
@@ -58,6 +45,24 @@ st.markdown("""
     .stButton button:hover {
         transform: translateY(-2px);
         box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+    /* Стили для формул */
+    .math-content {
+        font-size: 1.1em;
+        line-height: 1.6;
+    }
+    .katex { 
+        font-size: 1.1em !important;
+        background-color: #f8f9fa;
+        padding: 2px 4px;
+        border-radius: 3px;
+    }
+    .katex-display { 
+        margin: 1em 0 !important;
+        padding: 10px;
+        background-color: #f8f9fa;
+        border-radius: 5px;
+        overflow-x: auto;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -191,33 +196,33 @@ class MathAssistant:
         if context.strip():
             system_prompt = f"""Ты — преподаватель математики. Отвечай на русском языке.
 
-    ИСПОЛЬЗУЙ LaTeX ДЛЯ МАТЕМАТИЧЕСКИХ ФОРМУЛ:
-    - Для встроенных формул: \\(формула\\)
-    - Для формул на отдельной строке: \\[формула\\]
-    - Или используй стандартные разделители: $формула$ и $$формула$$
+ИСПОЛЬЗУЙ LaTeX ДЛЯ МАТЕМАТИЧЕСКИХ ФОРМУЛ:
+- Для встроенных формул: \\(формула\\)
+- Для формул на отдельной строке: \\[формула\\]
+- Или используй стандартные разделители: $формула$ и $$формула$$
 
-    Примеры:
-    - Производная функции: \\(f'(x) = \\lim_{{h \\to 0}} \\frac{{f(x+h)-f(x)}}{{h}}\\)
-    - Интеграл: \\[\\int_a^b f(x) dx\\]
+Примеры:
+- Производная функции: \\(f'(x) = \\lim_{{h \\to 0}} \\frac{{f(x+h)-f(x)}}{{h}}\\)
+- Интеграл: \\[\\int_a^b f(x) dx\\]
 
-    ИНФОРМАЦИЯ ИЗ УЧЕБНИКОВ:
-    {context}
+ИНФОРМАЦИЯ ИЗ УЧЕБНИКОВ:
+{context}
 
-    ВОПРОС: {question}
+ВОПРОС: {question}
 
-    ОТВЕТ (используй информацию из учебников если она есть, если нет — объясни своими словами, используй формулы в LaTeX):
-    """
+ОТВЕТ (используй информацию из учебников если она есть, если нет — объясни своими словами, используй формулы в LaTeX):
+"""
         else:
             system_prompt = f"""Ты — преподаватель математики. Отвечай понятно и подробно.
 
-    ИСПОЛЬЗУЙ LaTeX ДЛЯ МАТЕМАТИЧЕСКИХ ФОРМУЛ:
-    - Для встроенных формул: \\(формула\\)
-    - Для формул на отдельной строке: \\[формула\\]
+ИСПОЛЬЗУЙ LaTeX ДЛЯ МАТЕМАТИЧЕСКИХ ФОРМУЛ:
+- Для встроенных формул: \\(формула\\)
+- Для формул на отдельной строке: \\[формула\\]
 
-    ВОПРОС: {question}
+ВОПРОС: {question}
 
-    ОТВЕТ:
-    """
+ОТВЕТ:
+"""
         
         # Отправляем запрос к DeepSeek
         api_key = st.secrets.get("DEEPSEEK_API_KEY", os.getenv("DEEPSEEK_API_KEY"))
@@ -314,9 +319,46 @@ def main():
     # Кнопки
     col1, col2, col3 = st.columns([1, 1, 1])
     
+    # Проверяем, есть ли ответ для отображения
+    if "last_answer" in st.session_state:
+        st.markdown(f"### 📚 Ответ ({st.session_state.get('last_time', 0):.1f} сек)")
+        st.markdown("---")
+        
+        # Отображаем ответ с специальным классом
+        st.markdown(f'<div class="math-content" id="math-answer">{st.session_state.last_answer}</div>', unsafe_allow_html=True)
+        
+        # JavaScript для рендеринга формул
+        st.markdown("""
+        <script>
+        function renderMath() {
+            if (typeof renderMathInElement !== 'undefined') {
+                // Рендерим формулы во всем документе
+                renderMathInElement(document.body, {
+                    delimiters: [
+                        {left: '$$', right: '$$', display: true},
+                        {left: '$', right: '$', display: false},
+                        {left: '\\(', right: '\\)', display: false},
+                        {left: '\\[', right: '\\]', display: true}
+                    ],
+                    throwOnError: false,
+                    trust: true
+                });
+            }
+        }
+        
+        // Рендерим формулы сразу
+        renderMath();
+        
+        // И снова после небольшой задержки (на всякий случай)
+        setTimeout(renderMath, 100);
+        setTimeout(renderMath, 500);
+        </script>
+        """, unsafe_allow_html=True)
+        
+        st.code(st.session_state.last_answer, language="markdown", label="Ответ в формате Markdown")
+    
     with col1:
         if st.button("🎯 Получить ответ", type="primary", use_container_width=True):
-            # В функции main(), где показывается ответ:
             if question.strip():
                 with st.spinner("🔍 Ищу информацию в учебниках..."):
                     start_time = time.time()
@@ -332,52 +374,20 @@ def main():
                         "time": elapsed
                     })
                     
-                    # Показываем ответ
-                    st.markdown(f"### 📚 Ответ ({elapsed:.1f} сек)")
-                    st.markdown("---")
+                    # Сохраняем ответ для отображения
+                    st.session_state.last_answer = answer
+                    st.session_state.last_time = elapsed
                     
-                    # Отображаем ответ в контейнере с id для JavaScript
-                    answer_container = st.empty()
-                    answer_container.markdown(answer, unsafe_allow_html=True)
-                    
-                    # JavaScript для рендеринга формул в новом контенте
-                    st.markdown("""
-                    <script>
-                    // Функция для рендеринга математических формул
-                    function renderMathInContainer() {
-                        if (typeof renderMathInElement !== 'undefined') {
-                            renderMathInElement(document.body, {
-                                delimiters: [
-                                    {left: '$$', right: '$$', display: true},
-                                    {left: '$', right: '$', display: false},
-                                    {left: '\\(', right: '\\)', display: false},
-                                    {left: '\\[', right: '\\]', display: true}
-                                ],
-                                throwOnError: false,
-                                trust: true
-                            });
-                        }
-                    }
-                    
-                    // Вызываем после загрузки DOM и при изменениях
-                    if (document.readyState === 'loading') {
-                        document.addEventListener('DOMContentLoaded', renderMathInContainer);
-                    } else {
-                        renderMathInContainer();
-                    }
-                    
-                    // Также рендерим формулы после обновления Streamlit
-                    setTimeout(renderMathInContainer, 100);
-                    </script>
-                    """, unsafe_allow_html=True)
-                    
-                    # Кнопка копирования
-                    st.code(answer, language="markdown")
+                    # Перезагружаем страницу для отображения ответа
+                    st.rerun()
             else:
                 st.warning("⚠️ Введите вопрос")
     
     with col2:
         if st.button("🔄 Новый вопрос", use_container_width=True):
+            # Очищаем предыдущий ответ
+            if "last_answer" in st.session_state:
+                del st.session_state.last_answer
             st.session_state.question = ""
             st.rerun()
     
@@ -388,7 +398,27 @@ def main():
                 for i, item in enumerate(reversed(st.session_state.history[-5:])):
                     with st.expander(f"❓ {item['question'][:50]}..."):
                         st.markdown(f"**Время:** {item['time']:.1f} сек")
-                        st.markdown(f"**Ответ:** {item['answer'][:200]}...")
+                        st.markdown(f"**Ответ:**")
+                        st.markdown(f'<div class="math-content">{item["answer"][:500]}...</div>', unsafe_allow_html=True)
+                        
+                        # JavaScript для рендеринга формул в экспандере
+                        st.markdown("""
+                        <script>
+                        setTimeout(function() {
+                            if (typeof renderMathInElement !== 'undefined') {
+                                renderMathInElement(document.body, {
+                                    delimiters: [
+                                        {left: '$$', right: '$$', display: true},
+                                        {left: '$', right: '$', display: false},
+                                        {left: '\\(', right: '\\)', display: false},
+                                        {left: '\\[', right: '\\]', display: true}
+                                    ],
+                                    throwOnError: false
+                                });
+                            }
+                        }, 300);
+                        </script>
+                        """, unsafe_allow_html=True)
             else:
                 st.info("📝 История вопросов пуста")
     
@@ -410,6 +440,45 @@ def main():
         - DeepSeek API ключ (добавьте в секреты)
         - Папка `data/` с индексами учебников
         """)
+        
+        # Тестовая кнопка для проверки KaTeX
+        if st.button("🧪 Проверить KaTeX"):
+            test_math = r"""
+            **Тест математических формул:**
+            
+            Встроенная формула: \(E = mc^2\)
+            
+            Формула на отдельной строке:
+            \[
+            \int_{-\infty}^{\infty} e^{-x^2} dx = \sqrt{\pi}
+            \]
+            
+            Производная: $$\frac{dy}{dx} = \lim_{\Delta x \to 0} \frac{f(x+\Delta x) - f(x)}{\Delta x}$$
+            
+            Матрица: $\begin{pmatrix} a & b \\ c & d \end{pmatrix}$
+            
+            Сумма: \(\sum_{i=1}^{n} i = \frac{n(n+1)}{2}\)
+            """
+            st.markdown(f'<div class="math-content">{test_math}</div>', unsafe_allow_html=True)
+            
+            # JavaScript для рендеринга тестовых формул
+            st.markdown("""
+            <script>
+            setTimeout(function() {
+                if (typeof renderMathInElement !== 'undefined') {
+                    renderMathInElement(document.body, {
+                        delimiters: [
+                            {left: '$$', right: '$$', display: true},
+                            {left: '$', right: '$', display: false},
+                            {left: '\\(', right: '\\)', display: false},
+                            {left: '\\[', right: '\\]', display: true}
+                        ],
+                        throwOnError: false
+                    });
+                }
+            }, 100);
+            </script>
+            """, unsafe_allow_html=True)
 
 # Запуск приложения
 if __name__ == "__main__":
