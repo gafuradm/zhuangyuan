@@ -1,6 +1,6 @@
 # Папки с данными
-data/
 pdfs/
+data/
 
 # Python
 __pycache__/
