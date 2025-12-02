@@ -7,6 +7,9 @@ import hnswlib
 from typing import List
 import time
 import hashlib
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+import io
 
 # ========== CONFIGURATION ==========
 st.set_page_config(
@@ -301,6 +304,22 @@ def save_history(history):
     with open(HISTORY_FILE, "w", encoding="utf-8") as f:
         json.dump(history, f, ensure_ascii=False, indent=2)
 
+def create_pdf(answer: str) -> bytes:
+    buffer = io.BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=letter)
+
+    text = pdf.beginText(40, 750)
+    text.setFont("Helvetica", 11)
+
+    for line in answer.split("\n"):
+        text.textLine(line)
+
+    pdf.drawText(text)
+    pdf.showPage()
+    pdf.save()
+    buffer.seek(0)
+    return buffer.read()
+
 def main():
     st.markdown('<h1 class="main-header">🎓 Mathematics Assistant</h1>', unsafe_allow_html=True)
     st.markdown('<p style="text-align: center; color: #666;">AI mathematics assistant based on your textbooks</p>', unsafe_allow_html=True)
@@ -425,6 +444,15 @@ def main():
         # Display answer with LaTeX support
         st.markdown(render_math_answer(st.session_state.last_answer), unsafe_allow_html=True)
         
+        # PDF download button
+        pdf_bytes = create_pdf(st.session_state.last_answer)
+        st.download_button(
+            label="📄 Download answer as PDF",
+            data=pdf_bytes,
+            file_name="answer.pdf",
+            mime="application/pdf"
+        )
+
         # Debug information (can be hidden)
         with st.expander("📄 Raw answer text"):
             st.text(st.session_state.last_answer)
