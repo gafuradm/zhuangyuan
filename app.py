@@ -361,37 +361,56 @@ def create_pdf(answer: str) -> bytes:
     buffer.seek(0)
     return buffer.getvalue()
 
+def clean_problem_text(text: str) -> str:
+    """Clean problem text by removing common prefixes"""
+    # Убираем префиксы типа "PROBLEM 1:", "1.", "a)", и т.д.
+    patterns = [
+        r'^(PROBLEM|Problem|QUESTION|Question|EXERCISE|Exercise|TASK|Task)\s*\d+\s*[:.]\s*',
+        r'^\d+[\.:\)]\s*',
+        r'^[a-zA-Z]\)\s*',
+        r'^\(\d+\)\s*'
+    ]
+    
+    for pattern in patterns:
+        text = re.sub(pattern, '', text, flags=re.IGNORECASE)
+    
+    return text.strip()
+
 def generate_test(topic: str, count: int, difficulty: str, style: str, api_key: str):
-    prompt = f"""
-You are a mathematics test generator. Generate {count} problems on the topic "{topic}".
+    prompt = f"""You are a mathematics test generator. Generate exactly {count} problems on the topic "{topic}".
 Difficulty: {difficulty}.
 Style: {style}.
 
-FORMAT RULES:
-1. ALL mathematical expressions MUST be in LaTeX:
+CRITICAL FORMATTING RULES:
+1. EACH problem MUST start with "PROBLEM X:" where X is the problem number (1, 2, 3, etc.)
+2. ALL mathematical expressions MUST be in LaTeX:
    - Inline formulas: \\(formula\\)
    - Displayed formulas: $$formula$$
-2. Output format STRICTLY:
-   PROBLEM 1: [problem text with LaTeX]
-   PROBLEM 2: [problem text with LaTeX]
+3. Output format MUST be:
+   PROBLEM 1: [full problem statement with LaTeX]
+   PROBLEM 2: [full problem statement with LaTeX]
    ...
-3. No solutions, only problem statements.
+   PROBLEM {count}: [full problem statement with LaTeX]
+4. No solutions, only problem statements.
+5. Each problem should be on a separate line or clearly separated.
 
-Example problems:
-PROBLEM 1: Find the derivative of \\(f(x) = x^2 \\sin(x)\\) at \\(x = \\pi\\).
-PROBLEM 2: Calculate the integral: $$\\int_0^1 (3x^2 + 2x + 1) dx$$
-PROBLEM 3: Solve the differential equation: $$\\frac{{d^2y}}{{dx^2}} + 3\\frac{{dy}}{{dx}} + 2y = 0$$
-PROBLEM 4: Find the eigenvalues of matrix: $$\\begin{{pmatrix}} 1 & 2 \\\\ 3 & 4 \\end{{pmatrix}}$$
-"""
+Example of CORRECT format:
+PROBLEM 1: Find the derivative of \(f(x) = x^2 \sin(x)\) at \(x = \pi\).
+PROBLEM 2: Calculate the integral: $$\int_0^1 (3x^2 + 2x + 1) dx$$
+PROBLEM 3: Solve the differential equation: $$\frac{{d^2y}}{{dx^2}} + 3\frac{{dy}}{{dx}} + 2y = 0$$
+
+IMPORTANT: Use double curly braces {{ }} for LaTeX expressions that need braces in Python strings.
+
+Generate {count} problems following EXACTLY this format."""
 
     payload = {
         "model": "deepseek-chat",
         "messages": [
-            {"role": "system", "content": "You are a mathematics exam problem generator. Use LaTeX for ALL mathematical expressions."},
+            {"role": "system", "content": "You are a mathematics exam problem generator. You MUST output problems starting with 'PROBLEM X:' for each problem. Use LaTeX for ALL mathematical expressions."},
             {"role": "user", "content": prompt}
         ],
-        "max_tokens": 2000,
-        "temperature": 0.3
+        "max_tokens": 3000,
+        "temperature": 0.1  # Низкая температура для более стабильного формата
     }
 
     response = requests.post(
@@ -461,6 +480,71 @@ Score: 1/2
     )
 
     return response.json()["choices"][0]["message"]["content"]
+
+def parse_test_problems(raw_text: str) -> List[str]:
+    """Parse generated test problems from raw text"""
+    problems = []
+    
+    if not raw_text:
+        return problems
+    
+    # Удаляем markdown code blocks если есть
+    if raw_text.startswith("```"):
+        lines = raw_text.split("\n")
+        clean_lines = []
+        in_code = False
+        for line in lines:
+            if line.strip().startswith("```"):
+                in_code = not in_code
+                continue
+            if not in_code:
+                clean_lines.append(line)
+        raw_text = "\n".join(clean_lines)
+    
+    lines = raw_text.strip().split("\n")
+    current_problem = ""
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Проверяем, начинается ли строка с номера задачи
+        if (re.match(r'^(PROBLEM|Problem|QUESTION|Question|EXERCISE|Exercise|TASK|Task)\s*\d+\s*[:.]', line, re.IGNORECASE) or
+            re.match(r'^\d+[\.:\)]\s', line)):
+            
+            # Если уже есть собранная задача, добавляем ее
+            if current_problem:
+                problems.append(current_problem.strip())
+                current_problem = ""
+            
+            # Извлекаем текст после номера задачи
+            match = re.match(r'^(?:.*?\d+\s*[\.:\)]\s*)(.+)', line)
+            if match:
+                current_problem = match.group(1).strip()
+            else:
+                current_problem = line
+        elif current_problem:
+            # Продолжаем собирать текущую задачу
+            current_problem += " " + line
+        else:
+            # Если строка не начинается с номера, но содержит математику, начинаем новую задачу
+            if "$$" in line or "\\(" in line or "\\[" in line:
+                current_problem = line
+    
+    # Добавляем последнюю задачу
+    if current_problem:
+        problems.append(current_problem.strip())
+    
+    # Если ничего не нашли, пытаемся разделить по другим паттернам
+    if not problems:
+        # Паттерн для строк вида "1. ...", "2. ...", "a) ...", "b) ..."
+        pattern = r'(?:\d+[\.:]|[a-zA-Z]\))\s*(.+?)(?=(?:\s*\d+[\.:]|\s*[a-zA-Z]\)|$))'
+        matches = re.findall(pattern, raw_text, re.DOTALL)
+        if matches:
+            problems = [match.strip() for match in matches if match.strip()]
+    
+    return problems
 
 def main():
     st.markdown('<h1 class="main-header">🎓 Mathematics Assistant</h1>', unsafe_allow_html=True)
@@ -603,6 +687,7 @@ def main():
                 st.text(st.session_state.last_answer)
     
     # ========== TEST MAKER PAGE ==========
+    # ========== TEST MAKER PAGE ==========
     elif page == "Test Maker":
         api_key = st.secrets.get("DEEPSEEK_API_KEY", os.getenv("DEEPSEEK_API_KEY"))
         if not api_key:
@@ -616,74 +701,46 @@ def main():
             st.session_state.test_tasks = None
         if "parsed_tasks" not in st.session_state:
             st.session_state.parsed_tasks = []
+        if "raw_output" not in st.session_state:
+            st.session_state.raw_output = ""
 
         # Если тест еще не создан
         if st.session_state.test_tasks is None:
             st.subheader("Create Test")
             
             topic = st.text_input("📌 Topic", "Integrals")
-            count = st.number_input("🔢 Number of problems", 1, 30, 10)
+            count = st.number_input("🔢 Number of problems", 1, 30, 5)  # Уменьшил до 5 для начала
             difficulty = st.selectbox("🔥 Difficulty", ["Easy", "Medium", "Hard", "Olympiad"])
             style = st.selectbox("📖 Problem style", ["Original", "From textbooks", "Mixed"])
             
             if st.button("🎯 Generate Test"):
                 with st.spinner("AI is generating problems..."):
                     raw = generate_test(topic, count, difficulty, style, api_key)
-                    st.session_state.test_tasks = raw
+                    st.session_state.raw_output = raw
                     
-                    # Parse problems
-                    tasks = []
-                    lines = raw.split("\n")
-                    
-                    for line in lines:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        
-                        # Проверяем несколько форматов
-                        if (line.upper().startswith("PROBLEM") or 
-                            line.upper().startswith("QUESTION") or
-                            line.upper().startswith("EXERCISE") or
-                            (line[0].isdigit() and (":" in line or "." in line))):
-                            
-                            try:
-                                # Пробуем разные разделители
-                                if ":" in line:
-                                    task_text = line.split(":", 1)[1].strip()
-                                elif "." in line:
-                                    task_text = line.split(".", 1)[1].strip()
-                                elif ")" in line:
-                                    task_text = line.split(")", 1)[1].strip()
-                                else:
-                                    # Убираем номер задачи в начале строки
-                                    words = line.split()
-                                    if words[0].replace(".", "").isdigit():
-                                        task_text = " ".join(words[1:])
-                                    else:
-                                        task_text = line
-                                
-                                if task_text:
-                                    tasks.append(task_text)
-                            except Exception as e:
-                                st.warning(f"Could not parse line: {line}")
-                    
-                    if not tasks:
-                        # Попробуем другой подход - разделить по номерам
-                        # Ищем все, что начинается с цифры и точки/двоеточия
-                        pattern = r'\d+[\.:]\s*(.+?)(?=\s*\d+[\.:]|$)'
-                        matches = re.findall(pattern, raw, re.DOTALL)
-                        if matches:
-                            tasks = [match.strip() for match in matches]
-                    
+                    # Используем улучшенный парсер
+                    tasks = parse_test_problems(raw)
                     st.session_state.parsed_tasks = tasks
                     
                     if not tasks:
+                        # Пробуем более агрессивный парсинг
+                        lines = [line.strip() for line in raw.split("\n") if line.strip()]
+                        # Берем первые N непустых строк как задачи
+                        if lines:
+                            tasks = lines[:min(count * 2, len(lines))]  # Берем больше строк на случай если есть пустые
+                            # Фильтруем слишком короткие строки
+                            tasks = [task for task in tasks if len(task) > 10]
+                            st.session_state.parsed_tasks = tasks
+                    
+                    if not tasks:
                         st.error("❌ Could not parse problems. Showing raw output:")
-                        st.text(raw)
-                        # Даже если не распарсилось, сохраним raw для отладки
-                        st.session_state.parsed_tasks = [raw]
+                        st.text_area("Raw output", raw, height=300)
+                        # Показываем также для отладки что вернул AI
+                        with st.expander("🔍 Debug: What the AI returned"):
+                            st.code(raw, language="text")
                     else:
                         st.success(f"✅ Generated {len(tasks)} problems!")
+                        st.session_state.test_tasks = True  # Просто флаг что тест создан
                         st.rerun()
         
         # Если тест уже создан
@@ -694,45 +751,65 @@ def main():
             user_answers = {}
             
             if tasks:
-                # Проверяем, не является ли tasks одним большим текстом
-                if len(tasks) == 1 and "\n" in tasks[0]:
-                    # Попробуем разделить на отдельные задачи
-                    single_task = tasks[0]
-                    # Разделим по строкам, начинающимся с цифр
-                    subtasks = re.split(r'\n\s*\d+[\.:\)]\s*', single_task)
-                    if len(subtasks) > 1:
-                        tasks = [t.strip() for t in subtasks if t.strip()]
+                st.markdown(f"**Total problems: {len(tasks)}**")
                 
                 for i, task in enumerate(tasks, 1):
                     if i > 20:  # Ограничим количество задач
                         break
                         
                     st.markdown(f"### 🧩 Problem {i}")
-                    st.markdown(render_math_answer(task), unsafe_allow_html=True)
+                    # Убираем возможные префиксы если они есть
+                    clean_task = re.sub(r'^(PROBLEM|Problem|QUESTION|Question|EXERCISE|Exercise|TASK|Task)\s*\d+\s*[:.]\s*', '', task, flags=re.IGNORECASE)
+                    clean_task = re.sub(r'^\d+[\.:\)]\s*', '', clean_task)
+                    
+                    st.markdown(render_math_answer(clean_task.strip()), unsafe_allow_html=True)
                     user_answers[i] = st.text_area(f"Your answer for Problem {i}", 
-                                                 key=f"answer_{i}",
-                                                 height=100)
+                                                key=f"answer_{i}",
+                                                height=100,
+                                                placeholder="Enter your solution here...")
                 
-                col1, col2 = st.columns(2)
+                col1, col2, col3 = st.columns(3)
                 
                 with col1:
                     if st.button("✅ Check Answers", type="primary", use_container_width=True):
-                        with st.spinner("AI is checking answers..."):
-                            result = check_answers(tasks, user_answers, api_key)
-                        
-                        st.markdown("### 📊 Results")
-                        st.markdown(render_math_answer(result), unsafe_allow_html=True)
+                        if len(user_answers) < len(tasks):
+                            st.warning(f"⚠️ Please answer all {len(tasks)} problems before checking.")
+                        else:
+                            with st.spinner("AI is checking answers..."):
+                                result = check_answers(tasks, user_answers, api_key)
+                            
+                            st.markdown("### 📊 Results")
+                            st.markdown(render_math_answer(result), unsafe_allow_html=True)
                 
                 with col2:
                     if st.button("🔄 New Test", use_container_width=True):
                         st.session_state.test_tasks = None
                         st.session_state.parsed_tasks = []
+                        st.session_state.raw_output = ""
                         st.rerun()
+                
+                with col3:
+                    if st.button("📥 Download Test", use_container_width=True):
+                        # Создаем текстовый файл с задачами
+                        test_content = f"Mathematics Test - {len(tasks)} problems\n"
+                        test_content += "=" * 50 + "\n\n"
+                        
+                        for i, task in enumerate(tasks, 1):
+                            clean_task = re.sub(r'^(PROBLEM|Problem|QUESTION|Question|EXERCISE|Exercise|TASK|Task)\s*\d+\s*[:.]\s*', '', task, flags=re.IGNORECASE)
+                            clean_task = re.sub(r'^\d+[\.:\)]\s*', '', clean_task)
+                            test_content += f"Problem {i}:\n{clean_task}\n\n"
+                        
+                        st.download_button(
+                            label="📄 Download as Text",
+                            data=test_content,
+                            file_name="math_test.txt",
+                            mime="text/plain"
+                        )
             
             # Show raw generated text for debugging
-            with st.expander("📄 Raw generated problems"):
-                if st.session_state.test_tasks:
-                    st.text(st.session_state.test_tasks)
+            with st.expander("📄 Raw generated problems (for debugging)"):
+                if st.session_state.raw_output:
+                    st.text(st.session_state.raw_output)
     
     # ========== HISTORY PAGE ==========
     elif page == "History":
