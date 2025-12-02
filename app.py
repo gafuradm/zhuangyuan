@@ -396,7 +396,7 @@ def main():
                     st.session_state.last_answer = answer
                     st.session_state.last_time = elapsed
                     st.session_state.question = question
-                    st.experimental_rerun()
+                    st.rerun()
             else:
                 st.warning("⚠️ Введите вопрос")
     
