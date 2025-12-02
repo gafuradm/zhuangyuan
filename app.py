@@ -209,6 +209,10 @@ class MathAssistant:
         if context.strip():
             system_prompt = f"""Ты — преподаватель математики. Отвечай на русском языке.
 
+            FORMAT RULE:
+Do NOT output KaTeX configuration objects such as {left:'', right:''}.
+Only output pure LaTeX inside $...$ or \[...\].
+
 ВАЖНО: Все математические формулы должны быть записаны в формате LaTeX:
 - Для формул в строке: \\(формула\\)
 - Для вынесенных формул: $$формула$$
