@@ -4,3 +4,4 @@ requests>=2.31.0
 hnswlib>=0.7.0
 reportlab
 PyMuPDF>=1.22.0
+pytesseract>=0.3.10
