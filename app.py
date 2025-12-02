@@ -42,6 +42,9 @@ st.markdown("""
 # ========== УТИЛИТЫ ДЛЯ РЕНДЕРИНГА ==========
 def clean_latex_content(text: str) -> str:
     """Очищает текст от лишних символов и форматирует LaTeX"""
+    if not text:
+        return ""
+    
     # Удаляем лишние пробелы и переносы
     text = re.sub(r'\n{3,}', '\n\n', text)
     
@@ -51,7 +54,7 @@ def clean_latex_content(text: str) -> str:
     # Заменяем \( и \) на $ для строчных формул
     text = re.sub(r'\\\((.*?)\\\)', r'$\1$', text, flags=re.DOTALL)
     
-    # Экранируем HTML-сущности, но оставляем LaTeX
+    # Экранируем HTML-сущности
     text = html.escape(text)
     
     # Восстанавливаем LaTeX команды
@@ -73,16 +76,20 @@ def clean_latex_content(text: str) -> str:
 
 def render_with_katex(text: str) -> str:
     """Оборачивает текст для рендеринга KaTeX"""
+    if not text:
+        return ""
+    
     cleaned_text = clean_latex_content(text)
+    text_hash = abs(hash(text)) % 1000000  # Для создания уникального ID
     
     # Добавляем скрипт для рендеринга KaTeX
     html_content = f"""
-    <div class="math-answer" id="math-content-{hash(text)}">
+    <div class="math-answer" id="math-content-{text_hash}">
         {cleaned_text}
     </div>
     <script>
         document.addEventListener('DOMContentLoaded', function() {{
-            const element = document.getElementById('math-content-{hash(text)}');
+            const element = document.getElementById('math-content-{text_hash}');
             if (element && window.renderMathInElement) {{
                 renderMathInElement(element, {{
                     delimiters: [
@@ -99,7 +106,7 @@ def render_with_katex(text: str) -> str:
         
         // Также рендерим при изменении контента
         setTimeout(function() {{
-            const element = document.getElementById('math-content-{hash(text)}');
+            const element = document.getElementById('math-content-{text_hash}');
             if (element && window.renderMathInElement) {{
                 renderMathInElement(element, {{
                     delimiters: [
@@ -176,7 +183,8 @@ class MathAssistant:
                     "chunks": chunks
                 }
                 
-            except Exception:
+            except Exception as e:
+                print(f"Error loading subject {subject_name}: {e}")
                 continue
     
     def detect_subject(self, question: str) -> List[str]:
@@ -218,11 +226,13 @@ class MathAssistant:
                 subject_title = self.subjects[subject_name]["config"]["subject"]
                 for chunk in chunks[:3]:
                     all_contexts.append(f"📘 {subject_title}:\n{chunk}\n")
-            except Exception:
+            except Exception as e:
+                print(f"Error searching in {subject_name}: {e}")
                 continue
         
         context = "\n".join(all_contexts)
         
+        # Исправленный system_prompt с правильными бэкслэшами
         if context.strip():
             system_prompt = f"""Ты — преподаватель математики. Отвечай на русском языке.
 
@@ -235,7 +245,7 @@ class MathAssistant:
 Пример правильного ответа:
 Производная функции f(x) = x^2 равна $f'(x) = 2x$.
 Интеграл от функции вычисляется так:
-$$\\int x^2 dx = \\frac{x^3}{3} + C$$
+$$\\int x^2 dx = \\frac{{x^3}}{{3}} + C$$
 
 ИНФОРМАЦИЯ ИЗ УЧЕБНИКОВ:
 {context}
@@ -258,7 +268,7 @@ $$\\int x^2 dx = \\frac{x^3}{3} + C$$
         
         api_key = st.secrets.get("DEEPSEEK_API_KEY", os.getenv("DEEPSEEK_API_KEY"))
         if not api_key:
-            return "❌ API ключ не настроен."
+            return "❌ API ключ не настроен. Добавьте DEEPSEEK_API_KEY в секреты Streamlit."
         
         payload = {
             "model": "deepseek-chat",
@@ -282,7 +292,11 @@ $$\\int x^2 dx = \\frac{x^3}{3} + C$$
             )
             
             if response.status_code == 200:
-                return response.json()["choices"][0]["message"]["content"]
+                result = response.json()
+                if "choices" in result and len(result["choices"]) > 0:
+                    return result["choices"][0]["message"]["content"]
+                else:
+                    return "❌ Неожиданный формат ответа от API"
             else:
                 return f"❌ Ошибка API ({response.status_code})"
                 
@@ -294,12 +308,14 @@ def main():
     st.markdown('<h1 class="main-header">🎓 Математический Ассистент</h1>', unsafe_allow_html=True)
     st.markdown('<p style="text-align: center; color: #666;">AI-помощник по математике на основе ваших учебников</p>', unsafe_allow_html=True)
     
+    # Инициализация ассистента
     if "assistant" not in st.session_state:
         with st.spinner("🔄 Загружаю учебные материалы..."):
             st.session_state.assistant = MathAssistant("data")
     
     assistant = st.session_state.assistant
     
+    # Боковая панель
     with st.sidebar:
         st.image("https://cdn-icons-png.flaticon.com/512/2103/2103655.png", width=100)
         st.markdown("### 📚 Загруженные предметы")
@@ -315,6 +331,15 @@ def main():
                 """, unsafe_allow_html=True)
         else:
             st.warning("⚠️ Учебные материалы не загружены")
+            st.info("""
+            **Чтобы добавить материалы:**
+            1. Создайте папку `data/`
+            2. Внутри создайте папки предметов (например, `matan/`)
+            3. В каждой папке должны быть файлы:
+               - `config.json`
+               - `index.hnsw`
+               - `chunks.npy`
+            """)
         
         st.markdown("---")
         st.markdown("### 💡 Примеры вопросов")
@@ -327,22 +352,26 @@ def main():
         ]
         
         for example in examples:
-            if st.button(example, key=f"example_{example}"):
+            if st.button(example, key=f"example_{hash(example)}"):
                 st.session_state.question = example
                 if "last_answer" in st.session_state:
                     del st.session_state.last_answer
                 st.rerun()
     
+    # Основная область
     st.markdown("### 💭 Задайте вопрос по математике")
     
+    # Поле для вопроса
     question = st.text_area(
         "Введите ваш вопрос:",
         value=st.session_state.get("question", ""),
         placeholder="Например: 'Что такое производная?' или 'Объясни метод Гаусса'",
         height=100,
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        key="question_input"
     )
     
+    # Кнопки
     col1, col2 = st.columns(2)
     
     with col1:
@@ -353,6 +382,7 @@ def main():
                     answer = assistant.ask(question)
                     elapsed = time.time() - start_time
                     
+                    # Сохраняем историю
                     if "history" not in st.session_state:
                         st.session_state.history = []
                     
@@ -362,6 +392,7 @@ def main():
                         "time": elapsed
                     })
                     
+                    # Сохраняем текущий ответ
                     st.session_state.last_answer = answer
                     st.session_state.last_time = elapsed
                     st.rerun()
@@ -370,34 +401,35 @@ def main():
     
     with col2:
         if st.button("🔄 Новый вопрос", use_container_width=True):
+            # Очищаем текущий ответ
             if "last_answer" in st.session_state:
                 del st.session_state.last_answer
             st.session_state.question = ""
             st.rerun()
     
+    # Отображение ответа
     if "last_answer" in st.session_state:
         st.markdown(f"### 📚 Ответ ({st.session_state.get('last_time', 0):.1f} сек)")
         st.markdown("---")
         
-        # Отображаем ответ с KaTeX
+        # Отображаем ответ с поддержкой KaTeX
         st.markdown(render_with_katex(st.session_state.last_answer), unsafe_allow_html=True)
         
-        # Отладочная информация (опционально)
+        # Отладочная информация
         with st.expander("📄 Исходный текст ответа"):
             st.text(st.session_state.last_answer)
     
-    # История
-    if st.sidebar.button("📜 Показать историю", use_container_width=True):
+    # История в сайдбаре
+    with st.sidebar.expander("📜 История вопросов"):
         if "history" in st.session_state and st.session_state.history:
-            st.sidebar.markdown("### 📜 История вопросов")
             for i, item in enumerate(reversed(st.session_state.history[-5:])):
-                with st.sidebar.expander(f"❓ {item['question'][:50]}..."):
+                with st.expander(f"❓ {item['question'][:50]}...", key=f"history_{i}"):
                     st.write(f"**Время:** {item['time']:.1f} сек")
                     st.markdown(render_with_katex(item["answer"][:300] + ("..." if len(item["answer"]) > 300 else "")), unsafe_allow_html=True)
         else:
-            st.sidebar.info("📝 История вопросов пуста")
+            st.info("📝 История вопросов пуста")
     
-    # Информация
+    # Информация о системе
     with st.sidebar.expander("ℹ️ О системе"):
         st.markdown("""
         **Формулы должны быть в формате:**
@@ -407,6 +439,10 @@ def main():
         **Примеры:**
         - $E = mc^2$
         - $$\\int_a^b f(x) dx$$
+        
+        **Требования:**
+        - DeepSeek API ключ в секретах
+        - Подготовленные файлы учебников в папке `data/`
         """)
         
         if st.button("🧪 Тест KaTeX", key="test_katex"):
@@ -423,6 +459,7 @@ def main():
             Матрица: $\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}$
             """
             st.session_state.last_answer = test_answer
+            st.session_state.last_time = 0.1
             st.rerun()
 
 if __name__ == "__main__":
