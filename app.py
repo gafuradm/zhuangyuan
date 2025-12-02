@@ -353,10 +353,14 @@ def main():
             "Что такое собственные значения?"
         ]
         
-        for example in examples:
-            if st.button(example, key=f"example_{example}"):
-                st.session_state.question = example
-                st.rerun()
+    example_rerun_flag = False
+    for example in examples:
+        if st.button(example, key=f"example_{example}"):
+            st.session_state.question = example
+            example_rerun_flag = True
+
+    if example_rerun_flag:
+        st.experimental_rerun()
     
     st.markdown("### 💭 Задайте вопрос по математике")
     
@@ -414,7 +418,7 @@ def main():
         if st.button("🔄 Новый вопрос", use_container_width=True):
             st.session_state.question = ""
             st.session_state.last_answer = ""
-            st.experimental_rerun()
+            rerun_flag = True
     
     with col3:
         if st.button("📜 История", use_container_width=True):
@@ -480,6 +484,9 @@ def main():
             Сумма: \(\sum_{i=1}^{n} i = \frac{n(n+1)}{2}\)
             """
             st.markdown(render_math_answer(test_math), unsafe_allow_html=True)
+
+            if rerun_flag or example_rerun_flag:
+                st.experimental_rerun()
 
 if __name__ == "__main__":
     main()
