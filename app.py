@@ -10,7 +10,6 @@ import hashlib
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 import io
-import re
 
 # ========== CONFIGURATION ==========
 st.set_page_config(
@@ -211,43 +210,28 @@ class MathAssistant:
         context = "\n".join(all_contexts)
         
         if context.strip():
-            system_prompt = """
-You are a mathematical exam generator.
-You MUST output STRICT and VALID LaTeX.
+            system_prompt = f"""You are a mathematics teacher. Answer in English.
 
-ABSOLUTE RULES:
+            FORMAT RULE:
+Do NOT output KaTeX configuration objects such as {{left:'', right:''}}.
+Only output pure LaTeX inside $...$ or \[...\].
 
-1. Every integral MUST have:
-   - limits wrapped in braces: \int_{a}^{b}
-   - no missing braces
-   - dx always wrapped: \, dx
+IMPORTANT: All mathematical formulas must be written in LaTeX format:
+- For inline formulas: \\(formula\\)
+- For displayed formulas: $$formula$$
+- Use standard LaTeX notation
 
-2. Every fraction MUST be:
-   \frac{ <numerator> }{ <denominator> }
+Example:
+Function derivative: \\(f'(x) = \\lim_{{h \\to 0}} \\frac{{f(x+h)-f(x)}}{{h}}\\)
+Integral: $$\\int_a^b f(x) dx$$
 
-3. ALWAYS wrap complex upper/lower limits in braces:
-   WRONG: \int_{0}^{\pi x \sin x}
-   RIGHT: \int_{0}^{\pi x \sin x} → INVALID
-   TRUE RIGHT: \int_{0}^{\pi} x \sin x \, dx
+INFORMATION FROM TEXTBOOKS:
+{context}
 
-   If you generate an expression as a limit, ALWAYS do:
-   \int_{0}^{ {\pi \cdot \frac{x \sin x}{1+\cos^2 x}} }
+QUESTION: {question}
 
-4. NEVER output broken LaTeX like:
-   - missing "}"
-   - missing "{"
-   - merged text and math
-   - incomplete commands: \int_{0}^{\pi \frac{x}
-
-5. If LaTeX is invalid — FIX YOURSELF before output.
-
-6. For text ALWAYS use:
-   \text{ ... }
-
-7. Output ONLY LaTeX. No prose.
-
+ANSWER (always use LaTeX for all mathematical expressions):
 """
-
         else:
             system_prompt = f"""You are a mathematics teacher. Answer clearly and in detail in English.
 
@@ -286,48 +270,12 @@ ANSWER:
             )
             
             if response.status_code == 200:
-                raw = response.json()["choices"][0]["message"]["content"]
-                return fix_latex(raw)
+                return response.json()["choices"][0]["message"]["content"]
             else:
                 return f"❌ API Error ({response.status_code}): {response.text}"
                 
         except Exception as e:
             return f"❌ Connection error: {str(e)}"
-        
-def fix_latex(raw: str) -> str:
-    text = raw
-
-    # 0. Нормализуем пробелы
-    text = text.replace("\\text ", "\\text")  # Если пробел после команды
-
-    # 1. Исправляем \textНайти → \text{Найти}
-    text = re.sub(r"\\text([А-Яа-яA-Za-z0-9])", r"\\text{\1", text)
-    # и закрываем фигурную в конце слова
-    text = re.sub(r"\\text\{([^}]*) (?=[А-Яа-яA-Za-z])", r"\\text{\1 ", text)
-    text = re.sub(r"(\\text\{[^}]*)$", r"\1}", text)
-
-    # 2. Исправляем \text…} → \text{…}
-    text = re.sub(r"\\text([^{}]+)}", r"\\text{\1}", text)
-
-    # 3. Удаляем одинокие '}' или '{'
-    text = re.sub(r"(?<!\\)[{}](?=\s|$)", "", text)
-
-    # 4. Убираем } перед словом
-    text = re.sub(r"}\s*([A-Za-zА-Яа-я0-9\\(])", r"\1", text)
-
-    # 5. Добавляем закрывающую } если \text{ открыт
-    open_texts = text.count("\\text{")
-    close_texts = text.count("}")
-    if open_texts > close_texts:
-        text += "}" * (open_texts - close_texts)
-
-    # 6. Делает формулы валидными: \mathbbR → \mathbb{R}
-    text = re.sub(r"\\mathbb([A-Za-z])", r"\\mathbb{\1}", text)
-
-    # 7. Удаляем мусор вроде 0^x(x-t) → корректируем скобки
-    text = text.replace("0^x(", "0^{x}(")
-
-    return text.strip()
 
 # ========== STREAMLIT INTERFACE ==========
 def render_math_answer(answer: str):
@@ -412,64 +360,25 @@ def create_pdf(answer: str) -> bytes:
     buffer.seek(0)
     return buffer.getvalue()
 
-def parse_latex_tasks(raw: str):
-    tasks = []
-
-    # 1) Убираем переносы в \text{...} чтобы не ломало парсер
-    raw = re.sub(r"\\text\{([^}]*)\n([^}]*)\}", r"\\text{\1 \2}", raw)
-
-    # --------- ПАТТЕРН 1: \[  \] -----------
-    blocks = re.findall(r"\\\[(.*?)\\\]", raw, flags=re.S)
-    for b in blocks:
-        m = re.search(r"ЗАДАЧА\s*\d+[:\.]?\s*(.*)", b, flags=re.I)
-        if m:
-            tasks.append(m.group(1).strip())
-
-    # --------- ПАТТЕРН 2: $$  $$ -----------
-    blocks = re.findall(r"\$\$(.*?)\$\$", raw, flags=re.S)
-    for b in blocks:
-        m = re.search(r"ЗАДАЧА\s*\d+[:\.]?\s*(.*)", b, flags=re.I)
-        if m:
-            tasks.append(m.group(1).strip())
-
-    # --------- ПАТТЕРН 3: \(  \) ------------
-    blocks = re.findall(r"\\\((.*?)\\\)", raw, flags=re.S)
-    for b in blocks:
-        m = re.search(r"ЗАДАЧА\s*\d+[:\.]?\s*(.*)", b, flags=re.I)
-        if m:
-            tasks.append(m.group(1).strip())
-
-    # --------- ПАТТЕРН 4: Просто текст ------
-    lines = raw.splitlines()
-    for line in lines:
-        m = re.match(r"\s*ЗАДАЧА\s*\d+[:\.]?\s*(.*)", line, flags=re.I)
-        if m:
-            tasks.append(m.group(1).strip())
-
-    return tasks
-
 def generate_test(topic: str, count: int, difficulty: str, style: str, api_key: str):
     prompt = f"""
-Ты — генератор экзаменационных задач.
+Ты — генератор математических тестов.
 
 Сформируй {count} задач по теме "{topic}".
 Сложность: {difficulty}.
 Стиль: {style}.
 
-❗ Выводи СТРОГО в формате LaTeX:
-Каждая задача должна быть оформлена так:
-
-\\[
-\\text{{ЗАДАЧА 1: }} <текст задачи в одной строке>
-\\]
-
-Только задачи. Без решений. Без лишнего текста.
+Формат вывода СТРОГО:
+ЗАДАЧА 1: ...
+ЗАДАЧА 2: ...
+...
+Без решений, только условия.
 """
 
     payload = {
         "model": "deepseek-chat",
         "messages": [
-            {"role": "system", "content": "Ты — математический экзаменатор. Всегда выводи в чистом LaTeX."},
+            {"role": "system", "content": "Ты — генератор экзаменационных задач. Выводи ТОЛЬКО задачи."},
             {"role": "user", "content": prompt}
         ]
     }
@@ -484,8 +393,7 @@ def generate_test(topic: str, count: int, difficulty: str, style: str, api_key: 
         timeout=60
     )
 
-    raw = response.json()["choices"][0]["message"]["content"]
-    return fix_latex(raw)
+    return response.json()["choices"][0]["message"]["content"]
 
 
 def check_answers(tasks, user_answers, api_key: str):
@@ -494,38 +402,22 @@ def check_answers(tasks, user_answers, api_key: str):
     for i, task in enumerate(tasks, 1):
         prompt += f"""
 ЗАДАЧА {i}: {task}
-
 Ответ студента: {user_answers.get(i, '---')}
 ---
 """
 
     prompt += """
-Проанализируй КАЖДУЮ задачу.
-Выводи строго в LaTeX в таком формате:
-
-\\[
-\\text{Задача 1: } \checkmark \text{ или } \times
-\\]
-
-\\[
-\\text{Правильный ответ: } <формула>
-\\]
-
-\\[
-\\text{Объяснение: } <1–2 строки>
-\\]
-
-В конце выведи:
-
-\\[
-\\text{ИТОГОВЫЙ БАЛЛ: } <число>/<кол-во задач>
-\\]
+Проанализируй КАЖДУЮ задачу:
+- ✔️ / ❌
+- правильный ответ
+- короткое объяснение
+- в конце выведи общий балл / количество задач
 """
 
     payload = {
         "model": "deepseek-chat",
         "messages": [
-            {"role": "system", "content": "Всегда выводи только LaTeX. Никакого текста вне формул."},
+            {"role": "system", "content": "Ты — строгий математический экзаменатор."},
             {"role": "user", "content": prompt}
         ]
     }
@@ -540,8 +432,7 @@ def check_answers(tasks, user_answers, api_key: str):
         timeout=120
     )
 
-    raw = response.json()["choices"][0]["message"]["content"]
-    return fix_latex(raw)
+    return response.json()["choices"][0]["message"]["content"]
 
 def main():
     st.markdown('<h1 class="main-header">🎓 Mathematics Assistant</h1>', unsafe_allow_html=True)
@@ -552,7 +443,7 @@ def main():
         st.session_state.history = load_history()
 
     page = st.sidebar.selectbox("📂 Pages", ["Chat", "Test Maker", "History"])
-
+    
     # Load assistant only once
     if "assistant" not in st.session_state:
         with st.spinner("🔄 Loading learning materials..."):
@@ -681,6 +572,7 @@ def main():
         # Debug information (can be hidden)
         with st.expander("📄 Raw answer text"):
             st.text(st.session_state.last_answer)
+
     elif page == "Test Maker":
         api_key = st.secrets.get("DEEPSEEK_API_KEY", os.getenv("DEEPSEEK_API_KEY"))
         if not api_key:
@@ -707,7 +599,13 @@ def main():
                     raw = generate_test(topic, count, difficulty, style, api_key)
 
                 # Парсим задачи
-                tasks = parse_latex_tasks(raw)
+                tasks = []
+                for line in raw.split("\n"):
+                    if line.strip().startswith("ЗАДАЧА"):
+                        try:
+                            tasks.append(line.split(":", 1)[1].strip())
+                        except:
+                            pass
 
                 if not tasks:
                     st.error("❌ Не удалось распарсить задачи.")
