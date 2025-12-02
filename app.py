@@ -364,11 +364,11 @@ def create_pdf(answer: str) -> bytes:
 def parse_latex_tasks(raw):
     tasks = []
 
-    # 1. Найти все LaTeX-блоки \[ ... \]
-    blocks = re.findall(r"\\\[(.*?)\\\]", raw, flags=re.S)
+    # 1. Находим все блоки \\[ ... \\]
+    blocks = re.findall(r"\\\\\[(.*?)\\\\\]", raw, flags=re.S)
 
     for block in blocks:
-        # 2. Найти \text{ЗАДАЧА N: ...}
+        # 2. Ищем \text{ЗАДАЧА N: ...}
         match = re.search(r"\\text\{ЗАДАЧА\s*\d+:\s*(.*?)\}", block)
         if match:
             tasks.append(match.group(1).strip())
