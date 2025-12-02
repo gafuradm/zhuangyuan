@@ -10,7 +10,6 @@ import hashlib
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 import io
-import re
 
 # ========== CONFIGURATION ==========
 st.set_page_config(
@@ -361,57 +360,27 @@ def create_pdf(answer: str) -> bytes:
     buffer.seek(0)
     return buffer.getvalue()
 
-def clean_problem_text(text: str) -> str:
-    """Clean problem text by removing common prefixes"""
-    # Убираем префиксы типа "PROBLEM 1:", "1.", "a)", и т.д.
-    patterns = [
-        r'^(PROBLEM|Problem|QUESTION|Question|EXERCISE|Exercise|TASK|Task)\s*\d+\s*[:.]\s*',
-        r'^\d+[\.:\)]\s*',
-        r'^[a-zA-Z]\)\s*',
-        r'^\(\d+\)\s*'
-    ]
-    
-    for pattern in patterns:
-        text = re.sub(pattern, '', text, flags=re.IGNORECASE)
-    
-    return text.strip()
-
 def generate_test(topic: str, count: int, difficulty: str, style: str, api_key: str):
-    prompt = f"""You are a mathematics test generator. Generate exactly {count} problems on the topic "{topic}".
-Difficulty: {difficulty}.
-Style: {style}.
+    prompt = f"""
+Ты — генератор математических тестов.
 
-CRITICAL FORMATTING RULES - YOU MUST FOLLOW THESE EXACTLY:
-1. EACH and EVERY problem MUST start with EXACTLY "PROBLEM X:" where X is the problem number (1, 2, 3, etc.)
-2. Do NOT skip the "PROBLEM X:" prefix for any problem
-3. ALL mathematical expressions MUST be in LaTeX:
-   - Inline formulas: \\(formula\\)
-   - Displayed formulas: $$formula$$
-4. Output format MUST be EXACTLY:
-   PROBLEM 1: [full problem statement with LaTeX]
-   PROBLEM 2: [full problem statement with LaTeX]
-   ...
-   PROBLEM {count}: [full problem statement with LaTeX]
-5. No solutions, only problem statements.
-6. Each problem should be on a separate line.
+Сформируй {count} задач по теме "{topic}".
+Сложность: {difficulty}.
+Стиль: {style}.
 
-Here is the EXACT format you MUST use:
-PROBLEM 1: Find the derivative of \\(f(x) = x^2 \\sin(x)\\) at \\(x = \\pi\\).
-PROBLEM 2: Calculate the integral: $$\\int_0^1 (3x^2 + 2x + 1) dx$$
-PROBLEM 3: Solve the differential equation: $$\\frac{{d^2y}}{{dx^2}} + 3\\frac{{dy}}{{dx}} + 2y = 0$$
-
-IMPORTANT: If you don't start each problem with "PROBLEM X:", the system cannot parse it correctly.
-
-Generate exactly {count} problems following this EXACT format."""
+Формат вывода СТРОГО:
+ЗАДАЧА 1: ...
+ЗАДАЧА 2: ...
+...
+Без решений, только условия.
+"""
 
     payload = {
         "model": "deepseek-chat",
         "messages": [
-            {"role": "system", "content": "You are a mathematics exam problem generator. You MUST output EVERY problem starting with 'PROBLEM X:' where X is the number. This is critical for parsing. Never skip the PROBLEM X: prefix."},
+            {"role": "system", "content": "Ты — генератор экзаменационных задач. Выводи ТОЛЬКО задачи."},
             {"role": "user", "content": prompt}
-        ],
-        "max_tokens": 3000,
-        "temperature": 0.05  # Еще ниже температура для строгого формата
+        ]
     }
 
     response = requests.post(
@@ -426,48 +395,31 @@ Generate exactly {count} problems following this EXACT format."""
 
     return response.json()["choices"][0]["message"]["content"]
 
+
 def check_answers(tasks, user_answers, api_key: str):
-    prompt = """You are a strict mathematics examiner. Check the student's answers. Use LaTeX for ALL mathematical expressions.
-
-FORMAT RULES:
-1. All mathematical formulas MUST be in LaTeX: \\(formula\\) or $$formula$$
-2. For each problem provide:
-   - ✔️ or ❌
-   - Correct answer (in LaTeX)
-   - Brief explanation
-3. At the end provide total score in format: Score: X/Y
-4. Always use English for explanations.
-
-"""
+    prompt = "Ты — строгий экзаменатор. Проверь ответы студента.\n\n"
 
     for i, task in enumerate(tasks, 1):
         prompt += f"""
-PROBLEM {i}: {task}
-Student's answer: {user_answers.get(i, '---')}
+ЗАДАЧА {i}: {task}
+Ответ студента: {user_answers.get(i, '---')}
 ---
 """
 
     prompt += """
-Example output:
-✔️ PROBLEM 1: Correct
-Correct answer: \\(f'(x) = 2x\\sin(x) + x^2\\cos(x)\\)
-Explanation: Used the product rule for derivatives.
-
-❌ PROBLEM 2: Incorrect
-Correct answer: $$\\frac{5}{3}$$
-Explanation: The student made an error in integration limits.
-
-Score: 1/2
+Проанализируй КАЖДУЮ задачу:
+- ✔️ / ❌
+- правильный ответ
+- короткое объяснение
+- в конце выведи общий балл / количество задач
 """
 
     payload = {
         "model": "deepseek-chat",
         "messages": [
-            {"role": "system", "content": "You are a strict mathematics examiner. Output all mathematical expressions in LaTeX."},
+            {"role": "system", "content": "Ты — строгий математический экзаменатор."},
             {"role": "user", "content": prompt}
-        ],
-        "max_tokens": 2500,
-        "temperature": 0.1
+        ]
     }
 
     response = requests.post(
@@ -481,106 +433,6 @@ Score: 1/2
     )
 
     return response.json()["choices"][0]["message"]["content"]
-
-def parse_test_problems(raw_text: str) -> List[str]:
-    """Parse generated test problems from raw text with multiple strategies"""
-    problems = []
-    
-    if not raw_text:
-        return problems
-    
-    # Удаляем markdown code blocks если есть
-    if raw_text.startswith("```"):
-        lines = raw_text.split("\n")
-        clean_lines = []
-        in_code = False
-        for line in lines:
-            if line.strip().startswith("```"):
-                in_code = not in_code
-                continue
-            if not in_code:
-                clean_lines.append(line)
-        raw_text = "\n".join(clean_lines)
-    
-    # Стратегия 1: Ищем строки, начинающиеся с PROBLEM X:
-    lines = raw_text.strip().split("\n")
-    current_problem = ""
-    problem_number = 1
-    
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        
-        # Проверяем, начинается ли строка с PROBLEM X: (с учетом разных форматов)
-        problem_pattern = re.compile(r'^(PROBLEM|Problem)\s*(\d+)\s*[:.]\s*(.+)', re.IGNORECASE)
-        match = problem_pattern.match(line)
-        
-        if match:
-            # Если уже есть собранная задача, добавляем ее
-            if current_problem:
-                problems.append(current_problem.strip())
-            
-            # Начинаем новую задачу
-            current_problem = match.group(3).strip()
-            expected_number = int(match.group(2))
-            
-            # Проверяем порядок номеров
-            if expected_number != problem_number:
-                st.warning(f"⚠️ Problem numbering mismatch: expected {problem_number}, got {expected_number}")
-            problem_number += 1
-        elif current_problem:
-            # Продолжаем собирать текущую задачу
-            current_problem += " " + line
-    
-    # Добавляем последнюю задачу
-    if current_problem:
-        problems.append(current_problem.strip())
-    
-    # Стратегия 2: Если не нашли PROBLEM X:, ищем другие форматы
-    if not problems:
-        # Ищем задачи в формате "1. ...", "2. ..."
-        pattern = r'(?:\d+[\.:]\s*)(.+?)(?=(?:\s*\d+[\.:]\s*|$))'
-        matches = re.findall(pattern, raw_text, re.DOTALL)
-        if matches:
-            problems = [match.strip() for match in matches if match.strip()]
-    
-    # Стратегия 3: Разделяем по пустым строкам если задачи длинные
-    if not problems and "\n\n" in raw_text:
-        problems = [p.strip() for p in raw_text.strip().split("\n\n") if p.strip() and len(p.strip()) > 20]
-    
-    # Стратегия 4: Просто берем первые N непустых строк
-    if not problems:
-        lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
-        if lines:
-            # Фильтруем слишком короткие строки (меньше 10 символов)
-            problems = [line for line in lines if len(line) > 10]
-    
-    return problems
-
-def format_ai_response_for_display(text: str) -> str:
-    """Format AI response for better display in Streamlit"""
-    if not text:
-        return text
-    
-    # Добавляем PROBLEM X: если их нет
-    lines = text.strip().split("\n")
-    formatted_lines = []
-    problem_count = 0
-    
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        
-        # Проверяем, начинается ли строка с номера задачи
-        if re.match(r'^\d+[\.:]', line) or re.match(r'^(PROBLEM|Problem)', line, re.IGNORECASE):
-            problem_count += 1
-            formatted_lines.append(f"**Problem {problem_count}:** {line}")
-        else:
-            formatted_lines.append(line)
-    
-    return "\n\n".join(formatted_lines)
 
 def main():
     st.markdown('<h1 class="main-header">🎓 Mathematics Assistant</h1>', unsafe_allow_html=True)
@@ -597,6 +449,7 @@ def main():
         with st.spinner("🔄 Loading learning materials..."):
             st.session_state.assistant = MathAssistant("data")
 
+    
     assistant = st.session_state.assistant
     
     with st.sidebar:
@@ -645,234 +498,144 @@ def main():
                 st.session_state.question = example
                 st.rerun()
     
-    # ========== CHAT PAGE ==========
-    if page == "Chat":
-        st.markdown("### 💭 Ask a Mathematics Question")
-        
-        question = st.text_area(
-            "Enter your question:",
-            value=st.session_state.get("question", ""),
-            placeholder="Example: 'What is a derivative?' or 'Explain Gauss elimination method'",
-            height=120,
-            label_visibility="collapsed"
-        )
-        
-        col1, col2, col3 = st.columns([1, 1, 1])
-        
-        with col1:
-            if st.button("🎯 Get Answer", type="primary", use_container_width=True):
-                if question.strip():
-                    with st.spinner("🔍 Searching information in textbooks..."):
-                        start_time = time.time()
-                        answer = assistant.ask(question)
-                        elapsed = time.time() - start_time
-                        
-                        if "history" not in st.session_state:
-                            st.session_state.history = []
-                        st.session_state.history.append({
-                            "question": question,
-                            "answer": answer,
-                            "time": elapsed
-                        })
-
-                        save_history(st.session_state.history)
-                        
-                        st.session_state.last_answer = answer
-                        st.session_state.last_time = elapsed
-                        st.rerun()
-                else:
-                    st.warning("⚠️ Please enter a question")
-        
-        with col2:
-            if st.button("🔄 New Question", use_container_width=True):
-                if "last_answer" in st.session_state:
-                    del st.session_state.last_answer
-                st.session_state.question = ""
-                st.rerun()
-        
-        with col3:
-            if st.button("📜 History", use_container_width=True):
-                if "history" in st.session_state and st.session_state.history:
-                    st.markdown("### 📜 Question History")
-                    for i, item in enumerate(reversed(st.session_state.history[-5:])):
-                        with st.expander(f"❓ {item['question'][:50]}..."):
-                            st.markdown(f"**Time:** {item['time']:.1f} sec")
-                            st.markdown("**Answer:**")
-                            st.markdown(render_math_answer(item["answer"][:500] + ("..." if len(item["answer"]) > 500 else "")), unsafe_allow_html=True)
-                else:
-                    st.info("📝 Question history is empty")
-        
-        if "last_answer" in st.session_state:
-            st.markdown(f"### 📚 Answer ({st.session_state.get('last_time', 0):.1f} sec)")
-            st.markdown("---")
-            
-            # Display answer with LaTeX support
-            st.markdown(render_math_answer(st.session_state.last_answer), unsafe_allow_html=True)
-            
-            # PDF download button
-            pdf_bytes = create_pdf(st.session_state.last_answer)
-            st.download_button(
-                label="📄 Download answer as PDF",
-                data=pdf_bytes,
-                file_name="answer.pdf",
-                mime="application/pdf"
-            )
-
-            # Debug information (can be hidden)
-            with st.expander("📄 Raw answer text"):
-                st.text(st.session_state.last_answer)
+    st.markdown("### 💭 Ask a Mathematics Question")
     
-    # ========== TEST MAKER PAGE ==========
-    # ========== TEST MAKER PAGE ==========
+    question = st.text_area(
+        "Enter your question:",
+        value=st.session_state.get("question", ""),
+        placeholder="Example: 'What is a derivative?' or 'Explain Gauss elimination method'",
+        height=120,
+        label_visibility="collapsed"
+    )
+    
+    col1, col2, col3 = st.columns([1, 1, 1])
+    
+    with col1:
+        if st.button("🎯 Get Answer", type="primary", use_container_width=True):
+            if question.strip():
+                with st.spinner("🔍 Searching information in textbooks..."):
+                    start_time = time.time()
+                    answer = assistant.ask(question)
+                    elapsed = time.time() - start_time
+                    
+                    if "history" not in st.session_state:
+                        st.session_state.history = []
+                    st.session_state.history.append({
+                        "question": question,
+                        "answer": answer,
+                        "time": elapsed
+                    })
+
+                    save_history(st.session_state.history)
+                    
+                    st.session_state.last_answer = answer
+                    st.session_state.last_time = elapsed
+                    st.rerun()
+            else:
+                st.warning("⚠️ Please enter a question")
+    
+    with col2:
+        if st.button("🔄 New Question", use_container_width=True):
+            if "last_answer" in st.session_state:
+                del st.session_state.last_answer
+            st.session_state.question = ""
+            st.rerun()
+    
+    with col3:
+        if st.button("📜 History", use_container_width=True):
+            if "history" in st.session_state and st.session_state.history:
+                st.markdown("### 📜 Question History")
+                for i, item in enumerate(reversed(st.session_state.history[-5:])):
+                    with st.expander(f"❓ {item['question'][:50]}..."):
+                        st.markdown(f"**Time:** {item['time']:.1f} sec")
+                        st.markdown("**Answer:**")
+                        st.markdown(render_math_answer(item["answer"][:500] + ("..." if len(item["answer"]) > 500 else "")), unsafe_allow_html=True)
+            else:
+                st.info("📝 Question history is empty")
+    
+    if "last_answer" in st.session_state:
+        st.markdown(f"### 📚 Answer ({st.session_state.get('last_time', 0):.1f} sec)")
+        st.markdown("---")
+        
+        # Display answer with LaTeX support
+        st.markdown(render_math_answer(st.session_state.last_answer), unsafe_allow_html=True)
+        
+        # PDF download button
+        pdf_bytes = create_pdf(st.session_state.last_answer)
+        st.download_button(
+            label="📄 Download answer as PDF",
+            data=pdf_bytes,
+            file_name="answer.pdf",
+            mime="application/pdf"
+        )
+
+        # Debug information (can be hidden)
+        with st.expander("📄 Raw answer text"):
+            st.text(st.session_state.last_answer)
+
     elif page == "Test Maker":
         api_key = st.secrets.get("DEEPSEEK_API_KEY", os.getenv("DEEPSEEK_API_KEY"))
         if not api_key:
             st.error("❌ No API key found.")
             return
 
-        st.title("📝 Test Maker - Exam Generator")
-        
-        # States
+        st.title("📝 Test Maker — генератор экзаменов")
+
+        # Состояния
         if "test_tasks" not in st.session_state:
             st.session_state.test_tasks = None
-        if "parsed_tasks" not in st.session_state:
-            st.session_state.parsed_tasks = []
-        if "raw_output" not in st.session_state:
-            st.session_state.raw_output = ""
 
         # Если тест еще не создан
         if st.session_state.test_tasks is None:
-            st.subheader("Create Test")
-            
-            topic = st.text_input("📌 Topic", "Integrals")
-            count = st.number_input("🔢 Number of problems", 1, 30, 5)  # Уменьшил до 5 для начала
-            difficulty = st.selectbox("🔥 Difficulty", ["Easy", "Medium", "Hard", "Olympiad"])
-            style = st.selectbox("📖 Problem style", ["Original", "From textbooks", "Mixed"])
-            
-            if st.button("🎯 Generate Test"):
-                with st.spinner("AI is generating problems..."):
+            st.subheader("Создать тест")
+
+            topic = st.text_input("📌 Тема", "Интегралы")
+            count = st.number_input("🔢 Кол-во задач", 1, 30, 10)
+            difficulty = st.selectbox("🔥 Сложность", ["Легко", "Средне", "Сложно", "Олимпиада"])
+            style = st.selectbox("📖 Стиль задач", ["Авторские", "Из учебников", "Смешанные"])
+
+            if st.button("🎯 Сгенерировать тест"):
+                with st.spinner("ИИ генерирует задачи..."):
                     raw = generate_test(topic, count, difficulty, style, api_key)
-                    st.session_state.raw_output = raw
-                    
-                    # Используем улучшенный парсер
-                    tasks = parse_test_problems(raw)
-                    st.session_state.parsed_tasks = tasks
-                    
-                    if not tasks:
-                        # Пробуем более агрессивный парсинг
-                        lines = [line.strip() for line in raw.split("\n") if line.strip()]
-                        # Берем первые N непустых строк как задачи
-                        if lines:
-                            tasks = lines[:min(count * 2, len(lines))]  # Берем больше строк на случай если есть пустые
-                            # Фильтруем слишком короткие строки
-                            tasks = [task for task in tasks if len(task) > 10]
-                            st.session_state.parsed_tasks = tasks
-                    
-                    if not tasks:
-                        st.error("❌ Could not parse problems. Showing raw output:")
-                        st.text_area("Raw output", raw, height=300)
-                        # Показываем также для отладки что вернул AI
-                        with st.expander("🔍 Debug: What the AI returned"):
-                            st.code(raw, language="text")
-                    else:
-                        st.success(f"✅ Generated {len(tasks)} problems!")
-                        st.session_state.test_tasks = True  # Просто флаг что тест создан
-                        st.rerun()
-        
+
+                # Парсим задачи
+                tasks = []
+                for line in raw.split("\n"):
+                    if line.strip().startswith("ЗАДАЧА"):
+                        try:
+                            tasks.append(line.split(":", 1)[1].strip())
+                        except:
+                            pass
+
+                if not tasks:
+                    st.error("❌ Не удалось распарсить задачи.")
+                else:
+                    st.session_state.test_tasks = tasks
+                    st.rerun()
+
         # Если тест уже создан
         else:
-            st.subheader("📘 Your Test")
-            
-            tasks = st.session_state.parsed_tasks
+            st.subheader("📘 Ваш тест")
+
+            tasks = st.session_state.test_tasks
             user_answers = {}
-            
-            if tasks:
-                st.markdown(f"**Total problems: {len(tasks)}**")
-                
-                # В секции отображения задач добавьте:
+
             for i, task in enumerate(tasks, 1):
-                if i > 20:
-                    break
-                    
-                st.markdown(f"### 🧩 Problem {i}")
-                
-                # Очищаем задачу
-                clean_task = clean_problem_text(task)
-                
-                # Форматируем для лучшего отображения
-                display_task = format_ai_response_for_display(clean_task)
-                
-                st.markdown(render_math_answer(display_task), unsafe_allow_html=True)
-                user_answers[i] = st.text_area(f"Your answer for Problem {i}", 
-                                            key=f"answer_{i}",
-                                            height=120,  # Увеличим высоту
-                                            placeholder="Enter your solution here (use LaTeX for math)...")
-                            
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    if st.button("✅ Check Answers", type="primary", use_container_width=True):
-                        if len(user_answers) < len(tasks):
-                            st.warning(f"⚠️ Please answer all {len(tasks)} problems before checking.")
-                        else:
-                            with st.spinner("AI is checking answers..."):
-                                result = check_answers(tasks, user_answers, api_key)
-                            
-                            st.markdown("### 📊 Results")
-                            st.markdown(render_math_answer(result), unsafe_allow_html=True)
-                
-                with col2:
-                    if st.button("🔄 New Test", use_container_width=True):
-                        st.session_state.test_tasks = None
-                        st.session_state.parsed_tasks = []
-                        st.session_state.raw_output = ""
-                        st.rerun()
-                
-                with col3:
-                    if st.button("📥 Download Test", use_container_width=True):
-                        # Создаем текстовый файл с задачами
-                        test_content = f"Mathematics Test - {len(tasks)} problems\n"
-                        test_content += "=" * 50 + "\n\n"
-                        
-                        for i, task in enumerate(tasks, 1):
-                            clean_task = re.sub(r'^(PROBLEM|Problem|QUESTION|Question|EXERCISE|Exercise|TASK|Task)\s*\d+\s*[:.]\s*', '', task, flags=re.IGNORECASE)
-                            clean_task = re.sub(r'^\d+[\.:\)]\s*', '', clean_task)
-                            test_content += f"Problem {i}:\n{clean_task}\n\n"
-                        
-                        st.download_button(
-                            label="📄 Download as Text",
-                            data=test_content,
-                            file_name="math_test.txt",
-                            mime="text/plain"
-                        )
-            
-            # Show raw generated text for debugging
-            with st.expander("📄 Raw generated problems (for debugging)"):
-                if st.session_state.raw_output:
-                    st.text(st.session_state.raw_output)
+                st.markdown(f"### 🧩 Задача {i}")
+                st.markdown(task)
+                user_answers[i] = st.text_area(f"Ответ {i}", key=f"answer_{i}")
+
+            if st.button("✅ Проверить ответы"):
+                with st.spinner("ИИ проверяет..."):
+                    result = check_answers(tasks, user_answers, api_key)
+
+                st.markdown("### 📊 Результаты")
+                st.markdown(render_math_answer(result), unsafe_allow_html=True)
+
+            if st.button("🔄 Новый тест"):
+                st.session_state.test_tasks = None
+                st.rerun()
     
-    # ========== HISTORY PAGE ==========
-    elif page == "History":
-        st.title("📜 Question History")
-        
-        if "history" in st.session_state and st.session_state.history:
-            for i, item in enumerate(reversed(st.session_state.history)):
-                with st.expander(f"❓ {item['question'][:100]}..."):
-                    st.markdown(f"**Time:** {item['time']:.1f} seconds")
-                    st.markdown("**Question:**")
-                    st.markdown(f"`{item['question']}`")
-                    st.markdown("**Answer:**")
-                    st.markdown(render_math_answer(item["answer"]), unsafe_allow_html=True)
-                    
-                    # Кнопка для удаления записи
-                    if st.button(f"Delete this entry", key=f"delete_{i}"):
-                        st.session_state.history.pop(-(i+1))
-                        save_history(st.session_state.history)
-                        st.rerun()
-        else:
-            st.info("📝 No history yet. Ask some questions first!")
-    
-    # ========== ABOUT SECTION (всегда отображается) ==========
     with st.expander("ℹ️ About the System"):
         st.markdown("""
         **How the system works:**
