@@ -7,6 +7,7 @@ import hnswlib
 from typing import List
 import time
 import hashlib
+import concurrent.futures
 
 # ========== КОНФИГУРАЦИЯ ==========
 st.set_page_config(
@@ -85,34 +86,8 @@ st.markdown("""
         font-size: 1.1em !important;
         padding: 2px 4px;
     }
-    /* Стили для статуса обработки */
-    .processing-status {
-        padding: 15px;
-        border-radius: 10px;
-        margin: 10px 0;
-        background-color: #fff3cd;
-        border-left: 4px solid #ffc107;
-    }
 </style>
 """, unsafe_allow_html=True)
-
-# ========== ИНИЦИАЛИЗАЦИЯ СЕССИИ ==========
-def init_session_state():
-    """Инициализация состояния сессии"""
-    if 'assistant' not in st.session_state:
-        st.session_state.assistant = None
-    if 'history' not in st.session_state:
-        st.session_state.history = []
-    if 'question' not in st.session_state:
-        st.session_state.question = ""
-    if 'last_answer' not in st.session_state:
-        st.session_state.last_answer = None
-    if 'last_time' not in st.session_state:
-        st.session_state.last_time = 0
-    if 'processing' not in st.session_state:
-        st.session_state.processing = False
-    if 'processing_start' not in st.session_state:
-        st.session_state.processing_start = None
 
 # ========== МОДЕЛЬ ЭМБЕДДИНГОВ ==========
 class SimpleEmbedder:
@@ -213,8 +188,8 @@ class MathAssistant:
         indices, distances = subject_data["index"].knn_query(query_emb, k=top_k)
         return [subject_data["chunks"][idx] for idx in indices[0]]
     
-    def ask_with_timeout(self, question: str, timeout: int = 120) -> str:
-        """Основной метод для ответов с таймаутом"""
+    def ask(self, question: str) -> str:
+        """Основной метод для ответов"""
         if not self.subjects:
             return "❌ Нет загруженных учебных материалов."
         
@@ -274,8 +249,7 @@ class MathAssistant:
                 {"role": "user", "content": question}
             ],
             "max_tokens": 2000,
-            "temperature": 0.3,
-            "stream": False  # Отключаем streaming для надежности
+            "temperature": 0.3
         }
         
         try:
@@ -286,24 +260,16 @@ class MathAssistant:
                     "Content-Type": "application/json"
                 },
                 json=payload,
-                timeout=timeout
+                timeout=30
             )
             
             if response.status_code == 200:
                 return response.json()["choices"][0]["message"]["content"]
-            elif response.status_code == 429:
-                return "❌ Превышен лимит запросов. Подождите немного перед следующим запросом."
-            elif response.status_code == 503:
-                return "❌ Сервис временно недоступен. Попробуйте позже."
             else:
-                return f"❌ Ошибка API ({response.status_code}): {response.text[:200]}"
+                return f"❌ Ошибка API ({response.status_code}): {response.text}"
                 
-        except requests.exceptions.Timeout:
-            return f"❌ Время ожидания ответа истекло ({timeout} секунд). Попробуйте более простой вопрос."
-        except requests.exceptions.ConnectionError:
-            return "❌ Ошибка соединения. Проверьте подключение к интернету."
         except Exception as e:
-            return f"❌ Ошибка: {str(e)}"
+            return f"❌ Ошибка соединения: {str(e)}"
 
 # ========== ИНТЕРФЕЙС STREAMLIT ==========
 def render_math_answer(answer: str):
@@ -330,46 +296,21 @@ def render_math_answer(answer: str):
     """
     return html
 
-def show_processing_status():
-    """Показывает статус обработки"""
-    if st.session_state.processing and st.session_state.processing_start:
-        elapsed = time.time() - st.session_state.processing_start
-        st.markdown(f"""
-        <div class="processing-status">
-            <strong>🔄 Обрабатываю ваш вопрос...</strong><br>
-            <small>Прошло: {elapsed:.1f} секунд</small><br>
-            <small>Сложные вопросы могут занимать до 2-х минут</small>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Обновляем каждые 0.5 секунды для показа прогресса
-        time.sleep(0.5)
-        st.rerun()
-
 def main():
-    # Инициализация состояния сессии
-    init_session_state()
-    
     st.markdown('<h1 class="main-header">🎓 Математический Ассистент</h1>', unsafe_allow_html=True)
     st.markdown('<p style="text-align: center; color: #666;">AI-помощник по математике на основе ваших учебников</p>', unsafe_allow_html=True)
     
-    # Инициализация ассистента
-    if st.session_state.assistant is None:
+    if "assistant" not in st.session_state:
         with st.spinner("🔄 Загружаю учебные материалы..."):
-            try:
-                st.session_state.assistant = MathAssistant("data")
-                # Сохраняем в сессию, чтобы не перезагружать при обновлении
-                st.session_state._assistant_loaded = True
-            except Exception as e:
-                st.error(f"❌ Ошибка загрузки ассистента: {str(e)}")
-                return
+            st.session_state.assistant = MathAssistant("data")
     
     assistant = st.session_state.assistant
-    
-    # Показываем статус обработки если идет
-    if st.session_state.processing:
-        show_processing_status()
-        return
+
+    if "history" not in st.session_state:
+        st.session_state.history = []
+
+    if "last_answer" not in st.session_state:
+        st.session_state.last_answer = ""
     
     with st.sidebar:
         st.image("https://cdn-icons-png.flaticon.com/512/2103/2103655.png", width=100)
@@ -413,23 +354,9 @@ def main():
         ]
         
         for example in examples:
-            if st.button(example, key=f"example_{hash(example)}"):
+            if st.button(example, key=f"example_{example}"):
                 st.session_state.question = example
                 st.rerun()
-        
-        st.markdown("---")
-        st.markdown("### 📊 Статистика")
-        st.markdown(f"**Всего вопросов:** {len(st.session_state.history)}")
-        if st.session_state.history:
-            avg_time = sum(h['time'] for h in st.session_state.history) / len(st.session_state.history)
-            st.markdown(f"**Среднее время ответа:** {avg_time:.1f} сек")
-        
-        # Кнопка очистки истории
-        if st.button("🗑️ Очистить историю", type="secondary"):
-            st.session_state.history = []
-            st.success("История очищена!")
-            time.sleep(0.5)
-            st.rerun()
     
     st.markdown("### 💭 Задайте вопрос по математике")
     
@@ -446,88 +373,62 @@ def main():
     with col1:
         if st.button("🎯 Получить ответ", type="primary", use_container_width=True):
             if question.strip():
-                # Устанавливаем флаг обработки
-                st.session_state.processing = True
-                st.session_state.processing_start = time.time()
-                
-                # Запускаем обработку
-                answer = assistant.ask_with_timeout(question, timeout=120)
-                elapsed = time.time() - st.session_state.processing_start
-                
-                # Добавляем в историю
-                st.session_state.history.append({
-                    "question": question,
-                    "answer": answer,
-                    "time": elapsed
-                })
-                
-                # Сохраняем последний ответ
-                st.session_state.last_answer = answer
-                st.session_state.last_time = elapsed
-                
-                # Сбрасываем флаг обработки
-                st.session_state.processing = False
-                st.session_state.processing_start = None
-                
-                # Обновляем страницу для показа ответа
-                st.rerun()
+                with st.spinner("🔍 Ищу информацию в учебниках..."):
+                    def get_ai_answer(assistant, question):
+                        return assistant.ask(question)
+                    
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(get_ai_answer, assistant, question)
+                        try:
+                            answer = future.result(timeout=60)  # ждём максимум 60 секунд
+                            elapsed = 0  # можно потом замерять время внутри функции
+                        except concurrent.futures.TimeoutError:
+                            st.error("⏳ Слишком долгий ответ от AI, попробуйте позже.")
+                            answer = "❌ Время ожидания ответа превышено."
+                            elapsed = 0
+
+                    st.session_state.history.append({
+                        "question": question,
+                        "answer": answer,
+                        "time": elapsed
+                    })
+
+                    st.session_state.last_answer = answer
+                    st.session_state.last_time = elapsed
+                    st.session_state.question = question
+                    st.experimental_rerun()
             else:
                 st.warning("⚠️ Введите вопрос")
     
     with col2:
         if st.button("🔄 Новый вопрос", use_container_width=True):
             if "last_answer" in st.session_state:
-                st.session_state.last_answer = None
+                del st.session_state.last_answer
             st.session_state.question = ""
             st.rerun()
     
     with col3:
-        if st.button("📜 Показать историю", use_container_width=True):
-            # Показываем историю в модальном окне
+        if st.button("📜 История", use_container_width=True):
             if "history" in st.session_state and st.session_state.history:
                 st.markdown("### 📜 История вопросов")
-                st.markdown(f"**Всего вопросов:** {len(st.session_state.history)}")
-                
-                for i, item in enumerate(reversed(st.session_state.history)):
-                    with st.expander(f"❓ Вопрос {len(st.session_state.history)-i}: {item['question'][:100]}..."):
-                        st.markdown(f"**Время обработки:** {item['time']:.1f} сек")
-                        st.markdown(f"**Дата:** {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
+                for i, item in enumerate(reversed(st.session_state.history[-5:])):
+                    with st.expander(f"❓ {item['question'][:50]}..."):
+                        st.markdown(f"**Время:** {item['time']:.1f} сек")
                         st.markdown("**Ответ:**")
-                        st.markdown(render_math_answer(item["answer"]), unsafe_allow_html=True)
-                        
-                        # Кнопка для повторного использования вопроса
-                        if st.button(f"Повторить этот вопрос", key=f"repeat_{i}"):
-                            st.session_state.question = item['question']
-                            st.rerun()
+                        st.markdown(render_math_answer(item["answer"][:500] + ("..." if len(item["answer"]) > 500 else "")), unsafe_allow_html=True)
             else:
                 st.info("📝 История вопросов пуста")
     
-    # Показываем последний ответ
-    if "last_answer" in st.session_state and st.session_state.last_answer:
+    if "last_answer" in st.session_state:
         st.markdown(f"### 📚 Ответ ({st.session_state.get('last_time', 0):.1f} сек)")
         st.markdown("---")
         
         # Отображаем ответ с поддержкой LaTeX
         st.markdown(render_math_answer(st.session_state.last_answer), unsafe_allow_html=True)
         
-        # Кнопки действий с ответом
-        col_copy, col_save, col_debug = st.columns(3)
-        with col_copy:
-            if st.button("📋 Копировать ответ"):
-                st.code(st.session_state.last_answer)
-                st.success("Ответ скопирован в буфер обмена!")
-        
-        with col_save:
-            if st.button("💾 Сохранить в историю"):
-                # Уже сохранено, показываем сообщение
-                st.success("Ответ уже сохранен в историю!")
-        
-        with col_debug:
-            show_debug = st.checkbox("Показать отладочную информацию")
-            if show_debug:
-                st.text_area("Исходный текст ответа:", 
-                           st.session_state.last_answer, 
-                           height=300)
+        # Отладочная информация (можно скрыть)
+        with st.expander("📄 Исходный текст ответа"):
+            st.text(st.session_state.last_answer)
     
     with st.expander("ℹ️ О системе"):
         st.markdown("""
@@ -550,11 +451,6 @@ def main():
         - Все формулы автоматически рендерятся с помощью KaTeX
         - Используйте \\(формула\\) для встроенных формул
         - Используйте $$формула$$ для вынесенных формул
-        
-        **Особенности:**
-        - История сохраняется между обновлениями страницы
-        - Таймаут запроса: 2 минуты для сложных вопросов
-        - Показывает статус обработки в реальном времени
         """)
         
         if st.button("🧪 Проверить LaTeX рендеринг"):
