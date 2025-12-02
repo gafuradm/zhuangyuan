@@ -1,4 +1,3 @@
-# app.py
 import streamlit as st
 import os
 import json
@@ -7,13 +6,9 @@ import numpy as np
 import hnswlib
 from typing import List
 import time
-import tempfile
-import fitz  # PyMuPDF
-import glob
-from sentence_transformers import SentenceTransformer
-import sys
+import hashlib
 
-# Настройка страницы
+# ========== КОНФИГУРАЦИЯ ==========
 st.set_page_config(
     page_title="Математический Ассистент",
     page_icon="📚",
@@ -29,123 +24,27 @@ st.markdown("""
         text-align: center;
         margin-bottom: 1rem;
     }
-    .question-box {
-        background-color: #F8FAFC;
-        padding: 20px;
+    .subject-card {
+        background: #f8f9fa;
+        padding: 15px;
         border-radius: 10px;
-        border-left: 5px solid #3B82F6;
-        margin: 15px 0;
+        margin: 10px 0;
+        border-left: 4px solid #3B82F6;
     }
-    .answer-box {
-        background-color: #F0F9FF;
-        padding: 20px;
-        border-radius: 10px;
-        border-left: 5px solid #10B981;
-        margin: 15px 0;
+    .stButton button {
+        width: 100%;
+        transition: all 0.3s;
     }
-    .warning-box {
-        background-color: #FEF3C7;
-        padding: 20px;
-        border-radius: 10px;
-        border-left: 5px solid #F59E0B;
-        margin: 15px 0;
+    .stButton button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Функции для создания индексов
-def chunk_text(text, chunk_size=300, overlap=50):
-    """Разбивает текст на фрагменты"""
-    if not text or len(text.strip()) == 0:
-        return []
-    
-    chunks = []
-    start = 0
-    text_len = len(text)
-    
-    while start < text_len:
-        end = min(start + chunk_size, text_len)
-        chunk = text[start:end].strip()
-        if chunk and len(chunk) > 20:
-            chunks.append(chunk)
-        start = end - overlap if end - overlap > start else end
-    
-    return chunks
-
-def create_index_for_subject(subject_name, pdf_files):
-    """Создает индекс для предмета"""
-    import warnings
-    warnings.filterwarnings('ignore')
-    
-    data_dir = "data"
-    subject_dir = os.path.join(data_dir, subject_name)
-    os.makedirs(subject_dir, exist_ok=True)
-    
-    all_chunks = []
-    book_list = []
-    
-    # Простой экстрактор текста
-    for pdf_path in pdf_files:
-        try:
-            book_name = os.path.basename(pdf_path)
-            book_list.append(book_name)
-            
-            doc = fitz.open(pdf_path)
-            pdf_text = ""
-            for page in doc:
-                pdf_text += page.get_text() + "\n"
-            doc.close()
-            
-            chunks = chunk_text(pdf_text)
-            chunks = [f"[Книга: {book_name}]\n{chunk}" for chunk in chunks]
-            all_chunks.extend(chunks)
-            
-        except Exception as e:
-            st.warning(f"Ошибка при обработке {pdf_path}: {e}")
-            continue
-    
-    if not all_chunks:
-        return None
-    
-    # Сохраняем конфиг
-    config = {
-        "subject": subject_name,
-        "books": book_list,
-        "chunk_count": len(all_chunks)
-    }
-    
-    config_path = os.path.join(subject_dir, "config.json")
-    with open(config_path, "w", encoding="utf-8") as f:
-        json.dump(config, f, ensure_ascii=False, indent=2)
-    
-    # Создаем простые эмбеддинги (без интернета)
-    try:
-        model = SentenceTransformer("all-MiniLM-L6-v2")
-        embeddings = model.encode(all_chunks, show_progress_bar=False)
-    except:
-        # Резервный вариант: случайные эмбеддинги
-        embeddings = np.random.randn(len(all_chunks), 384).astype(np.float32)
-    
-    # Создаем HNSW индекс
-    dim = embeddings.shape[1]
-    index = hnswlib.Index(space='l2', dim=dim)
-    index.init_index(max_elements=len(all_chunks) * 2, ef_construction=200, M=16)
-    index.add_items(embeddings)
-    
-    # Сохраняем
-    index_path = os.path.join(subject_dir, "index.hnsw")
-    chunks_path = os.path.join(subject_dir, "chunks.npy")
-    
-    index.save_index(index_path)
-    np.save(chunks_path, np.array(all_chunks, dtype=object))
-    
-    return {
-        "config": config,
-        "chunks_count": len(all_chunks),
-        "index_path": index_path
-    }
-
+# ========== МОДЕЛЬ ЭМБЕДДИНГОВ ==========
 class SimpleEmbedder:
+    """Простая модель без интернета"""
     def __init__(self, dim=384):
         self.dim = dim
     
@@ -155,8 +54,9 @@ class SimpleEmbedder:
         
         embeddings = []
         for text in texts:
-            seed = hash(text) % (2**32)
-            np.random.seed(seed)
+            # Детерминированный хэш для воспроизводимости
+            text_hash = int(hashlib.md5(text.encode()).hexdigest()[:8], 16)
+            np.random.seed(text_hash)
             emb = np.random.randn(self.dim).astype(np.float32)
             embeddings.append(emb)
         
@@ -165,122 +65,61 @@ class SimpleEmbedder:
     def get_sentence_embedding_dimension(self):
         return self.dim
 
-class MultiSubjectTeacher:
+# ========== ОСНОВНОЙ КЛАСС ==========
+class MathAssistant:
     def __init__(self, data_dir="data"):
         self.data_dir = data_dir
         self.model = SimpleEmbedder(dim=384)
         self.subjects = {}
-        
-        # Если индексов нет, создаем их
-        if not os.path.exists(data_dir) or not os.listdir(data_dir):
-            self.create_default_indexes()
-        else:
-            self.load_all_subjects()
+        self.load_subjects()
     
-    def create_default_indexes(self):
-        """Создает тестовые индексы если их нет"""
-        st.info("🔄 Создаю учебные материалы...")
-        
-        # Создаем тестовые данные
-        test_data = {
-            "matan": [
-                "Производная функции показывает скорость её изменения.",
-                "Интеграл - это обратная операция к дифференцированию.",
-                "Предел функции в точке - это значение, к которому стремится функция.",
-                "Ряд Тейлора позволяет разложить функцию в бесконечную сумму.",
-                "Дифференциальные уравнения описывают процессы изменения."
-            ],
-            "linalg": [
-                "Матрица - это прямоугольная таблица чисел.",
-                "Определитель матрицы показывает, обратима ли матрица.",
-                "Собственные векторы не меняют направление при преобразовании.",
-                "Системы линейных уравнений решаются методом Гаусса.",
-                "Векторное пространство - это множество векторов с операциями."
-            ]
-        }
-        
-        os.makedirs(self.data_dir, exist_ok=True)
-        
-        for subject_name, texts in test_data.items():
-            subject_dir = os.path.join(self.data_dir, subject_name)
-            os.makedirs(subject_dir, exist_ok=True)
-            
-            # Сохраняем конфиг
-            config = {
-                "subject": subject_name,
-                "books": ["тестовый_учебник.pdf"],
-                "chunk_count": len(texts)
-            }
-            
-            config_path = os.path.join(subject_dir, "config.json")
-            with open(config_path, "w", encoding="utf-8") as f:
-                json.dump(config, f, ensure_ascii=False, indent=2)
-            
-            # Создаем эмбеддинги
-            embeddings = np.random.randn(len(texts), 384).astype(np.float32)
-            
-            # Создаем HNSW индекс
-            index = hnswlib.Index(space='l2', dim=384)
-            index.init_index(max_elements=len(texts) * 2, ef_construction=200, M=16)
-            index.add_items(embeddings)
-            
-            # Сохраняем
-            index_path = os.path.join(subject_dir, "index.hnsw")
-            chunks_path = os.path.join(subject_dir, "chunks.npy")
-            
-            index.save_index(index_path)
-            np.save(chunks_path, np.array(texts, dtype=object))
-            
-            # Загружаем в память
-            dim = self.model.get_sentence_embedding_dimension()
-            index_loaded = hnswlib.Index(space='l2', dim=dim)
-            index_loaded.load_index(index_path, max_elements=len(texts))
-            
-            self.subjects[subject_name] = {
-                "config": config,
-                "index": index_loaded,
-                "chunks": np.array(texts, dtype=object)
-            }
-        
-        st.success("✅ Тестовые материалы созданы")
-    
-    def load_all_subjects(self):
+    def load_subjects(self):
+        """Загружает все предметы"""
         if not os.path.exists(self.data_dir):
+            st.error(f"❌ Папка '{self.data_dir}' не найдена!")
             return
         
-        for subject_name in os.listdir(self.data_dir):
-            subject_path = os.path.join(self.data_dir, subject_name)
-            if os.path.isdir(subject_path):
-                try:
-                    config_path = os.path.join(subject_path, "config.json")
-                    if not os.path.exists(config_path):
-                        continue
-                    
-                    with open(config_path, 'r', encoding='utf-8') as f:
-                        config = json.load(f)
-                    
-                    index_path = os.path.join(subject_path, "index.hnsw")
-                    chunks_path = os.path.join(subject_path, "chunks.npy")
-                    
-                    if not os.path.exists(index_path):
-                        continue
-                    
-                    chunks = np.load(chunks_path, allow_pickle=True)
-                    
-                    dim = self.model.get_sentence_embedding_dimension()
-                    index = hnswlib.Index(space='l2', dim=dim)
-                    index.load_index(index_path, max_elements=len(chunks))
-                    
-                    self.subjects[subject_name] = {
-                        "config": config,
-                        "index": index,
-                        "chunks": chunks
-                    }
-                    
-                except Exception as e:
-                    st.error(f"Ошибка загрузки {subject_name}: {e}")
+        subject_folders = [d for d in os.listdir(self.data_dir) 
+                          if os.path.isdir(os.path.join(self.data_dir, d))]
+        
+        if not subject_folders:
+            st.warning("⚠️ В папке data/ нет предметов")
+            return
+        
+        for subject_name in subject_folders:
+            try:
+                subject_path = os.path.join(self.data_dir, subject_name)
+                
+                # Проверяем необходимые файлы
+                required_files = ["config.json", "index.hnsw", "chunks.npy"]
+                if not all(os.path.exists(os.path.join(subject_path, f)) for f in required_files):
+                    st.warning(f"⚠️ В папке '{subject_name}' не хватает файлов")
+                    continue
+                
+                # Загружаем конфиг
+                with open(os.path.join(subject_path, "config.json"), 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                
+                # Загружаем чанки
+                chunks = np.load(os.path.join(subject_path, "chunks.npy"), allow_pickle=True)
+                
+                # Загружаем HNSW индекс
+                dim = self.model.get_sentence_embedding_dimension()
+                index = hnswlib.Index(space='l2', dim=dim)
+                index.load_index(os.path.join(subject_path, "index.hnsw"), 
+                               max_elements=len(chunks))
+                
+                self.subjects[subject_name] = {
+                    "config": config,
+                    "index": index,
+                    "chunks": chunks
+                }
+                
+            except Exception as e:
+                st.error(f"❌ Ошибка загрузки '{subject_name}': {str(e)}")
     
     def detect_subject(self, question: str) -> List[str]:
+        """Определяет предмет вопроса"""
         question_lower = question.lower()
         subject_keywords = {
             "matan": ["матанализ", "мат анализ", "дифференциал", "интеграл", 
@@ -289,70 +128,68 @@ class MultiSubjectTeacher:
                       "собствен", "линейное пространство", "линейно", "алгебр"]
         }
         
-        relevant_subjects = []
+        relevant = []
         for subject_name in self.subjects.keys():
             if subject_name in subject_keywords:
                 for keyword in subject_keywords[subject_name]:
                     if keyword in question_lower:
-                        if subject_name not in relevant_subjects:
-                            relevant_subjects.append(subject_name)
+                        if subject_name not in relevant:
+                            relevant.append(subject_name)
                         break
         
-        return relevant_subjects if relevant_subjects else list(self.subjects.keys())
+        return relevant if relevant else list(self.subjects.keys())
     
     def search_in_subject(self, subject_name: str, query: str, top_k: int = 3):
+        """Ищет в конкретном предмете"""
         subject_data = self.subjects[subject_name]
         query_emb = self.model.encode([query])
-        
         indices, distances = subject_data["index"].knn_query(query_emb, k=top_k)
         return [subject_data["chunks"][idx] for idx in indices[0]]
     
-    def ask(self, question: str):
+    def ask(self, question: str) -> str:
+        """Основной метод для ответов"""
         if not self.subjects:
             return "❌ Нет загруженных учебных материалов."
         
+        # Определяем предметы
         relevant_subjects = self.detect_subject(question)
-        all_contexts = []
         
+        # Собираем контекст
+        all_contexts = []
         for subject_name in relevant_subjects:
             try:
                 chunks = self.search_in_subject(subject_name, question, top_k=3)
                 subject_title = self.subjects[subject_name]["config"]["subject"]
-                for chunk in chunks:
-                    all_contexts.append(f"【{subject_title}】\n{chunk}")
-            except:
+                for i, chunk in enumerate(chunks[:3]):  # Берем только 3 лучших
+                    all_contexts.append(f"📘 {subject_title}:\n{chunk}\n")
+            except Exception as e:
                 continue
         
-        context = "\n\n".join(all_contexts)
+        context = "\n".join(all_contexts)
         
+        # Формируем промпт
         if context.strip():
-            if len(context) > 6000:
-                context = context[:6000] + "..."
-            
-            system_prompt = f"""
-Ты — преподаватель математики. Отвечай максимально понятно и подробно.
-Используй информацию из материалов если она есть.
-Если информации нет — объясни своими словами.
+            system_prompt = f"""Ты — преподаватель математики. Отвечай на русском языке.
 
-Материалы из учебников:
+ИНФОРМАЦИЯ ИЗ УЧЕБНИКОВ:
 {context}
 
-Вопрос: {question}
+ВОПРОС: {question}
 
-Ответ (на русском или китайском в зависимости от вопроса):
+ОТВЕТ (используй информацию из учебников если она есть, если нет — объясни своими словами):
 """
         else:
-            system_prompt = f"""
-Ты — преподаватель математики. Объясняй темы понятно, как на лекции.
+            system_prompt = f"""Ты — преподаватель математики. Отвечай понятно и подробно.
 
-Вопрос: {question}
+ВОПРОС: {question}
 
-Ответ:
+ОТВЕТ:
 """
         
-        api_key = os.getenv('DEEPSEEK_API_KEY')
+        # Отправляем запрос к DeepSeek
+        api_key = st.secrets.get("DEEPSEEK_API_KEY", os.getenv("DEEPSEEK_API_KEY"))
         if not api_key:
-            return "❌ API ключ не настроен. Добавьте DEEPSEEK_API_KEY в секреты Streamlit."
+            return "❌ API ключ не настроен. Добавьте DEEPSEEK_API_KEY в секреты."
         
         payload = {
             "model": "deepseek-chat",
@@ -360,143 +197,152 @@ class MultiSubjectTeacher:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": question}
             ],
-            "max_tokens": 2000,
+            "max_tokens": 1500,
             "temperature": 0.7
         }
         
         try:
-            resp = requests.post(
+            response = requests.post(
                 "https://api.deepseek.com/v1/chat/completions",
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json"
                 },
                 json=payload,
-                timeout=120
+                timeout=30
             )
             
-            if resp.status_code != 200:
-                return f"❌ Ошибка API: {resp.status_code}"
-            
-            data = resp.json()
-            return data["choices"][0]["message"]["content"]
-            
+            if response.status_code == 200:
+                return response.json()["choices"][0]["message"]["content"]
+            else:
+                return f"❌ Ошибка API ({response.status_code}): {response.text}"
+                
         except Exception as e:
             return f"❌ Ошибка соединения: {str(e)}"
 
-# Инициализация системы
-@st.cache_resource
-def load_teacher():
-    return MultiSubjectTeacher(data_dir="data")
-
+# ========== ИНТЕРФЕЙС STREAMLIT ==========
 def main():
     # Заголовок
     st.markdown('<h1 class="main-header">🎓 Математический Ассистент</h1>', unsafe_allow_html=True)
-    st.markdown('<p style="text-align: center; color: #666;">AI-помощник по математическому анализу и линейной алгебре</p>', unsafe_allow_html=True)
+    st.markdown('<p style="text-align: center; color: #666;">AI-помощник по математике на основе ваших учебников</p>', unsafe_allow_html=True)
+    
+    # Инициализация ассистента
+    if "assistant" not in st.session_state:
+        with st.spinner("🔄 Загружаю учебные материалы..."):
+            st.session_state.assistant = MathAssistant("data")
+    
+    assistant = st.session_state.assistant
     
     # Боковая панель
     with st.sidebar:
         st.image("https://cdn-icons-png.flaticon.com/512/2103/2103655.png", width=100)
-        st.markdown("### 📚 О системе")
+        st.markdown("### 📚 Загруженные предметы")
         
-        teacher = load_teacher()
-        
-        if teacher.subjects:
-            st.success(f"✅ Загружено предметов: {len(teacher.subjects)}")
-            for subject_name, data in teacher.subjects.items():
-                with st.expander(f"{data['config']['subject']}"):
-                    st.write(f"📖 Книг: {len(data['config']['books'])}")
-                    st.write(f"🧩 Фрагментов: {len(data['chunks'])}")
+        if assistant.subjects:
+            for subject_name, data in assistant.subjects.items():
+                with st.container():
+                    st.markdown(f"""
+                    <div class="subject-card">
+                    <strong>{data['config']['subject']}</strong><br>
+                    📖 {len(data['config']['books'])} книг<br>
+                    🧩 {len(data['chunks'])} фрагментов
+                    </div>
+                    """, unsafe_allow_html=True)
         else:
-            st.warning("⚠️ Нет учебных материалов")
-            if st.button("🔄 Создать тестовые данные"):
-                teacher.create_default_indexes()
-                st.rerun()
+            st.warning("⚠️ Учебные материалы не загружены")
+            st.info("Убедитесь, что папка `data/` есть в репозитории")
         
         st.markdown("---")
-        st.markdown("### 🔧 Настройки")
-        st.caption("Для работы нужен DeepSeek API ключ")
+        st.markdown("### 💡 Примеры вопросов")
         
-        if not os.getenv('DEEPSEEK_API_KEY'):
-            st.error("❌ DEEPSEEK_API_KEY не задан")
-            st.info("Добавьте в Secrets Streamlit Cloud:")
-            st.code("DEEPSEEK_API_KEY = sk-ваш_ключ")
+        examples = [
+            "Что такое производная?",
+            "Как найти определитель матрицы?",
+            "Объясни правило Лопиталя",
+            "Что такое собственные значения?"
+        ]
+        
+        for example in examples:
+            if st.button(example, key=f"example_{example}"):
+                st.session_state.question = example
     
     # Основная область
-    st.markdown("### 💭 Задайте вопрос")
+    st.markdown("### 💭 Задайте вопрос по математике")
     
-    col1, col2 = st.columns([3, 1])
+    # Поле для вопроса
+    question = st.text_area(
+        "Введите ваш вопрос:",
+        value=st.session_state.get("question", ""),
+        placeholder="Например: 'Что такое производная?' или 'Объясни метод Гаусса'",
+        height=120,
+        label_visibility="collapsed"
+    )
+    
+    # Кнопки
+    col1, col2, col3 = st.columns([1, 1, 1])
     
     with col1:
-        question = st.text_area(
-            "Введите ваш вопрос по математике:",
-            placeholder="Например: 'Что такое производная?' или 'Объясни правило Лопиталя'",
-            height=100,
-            key="question_input",
-            label_visibility="collapsed"
-        )
+        if st.button("🎯 Получить ответ", type="primary", use_container_width=True):
+            if question.strip():
+                with st.spinner("🔍 Ищу информацию в учебниках..."):
+                    start_time = time.time()
+                    answer = assistant.ask(question)
+                    elapsed = time.time() - start_time
+                    
+                    # Сохраняем в историю
+                    if "history" not in st.session_state:
+                        st.session_state.history = []
+                    st.session_state.history.append({
+                        "question": question,
+                        "answer": answer,
+                        "time": elapsed
+                    })
+                    
+                    # Показываем ответ
+                    st.markdown(f"### 📚 Ответ ({elapsed:.1f} сек)")
+                    st.markdown("---")
+                    st.markdown(answer)
+                    
+                    # Кнопка копирования
+                    st.code(answer, language="markdown")
+            else:
+                st.warning("⚠️ Введите вопрос")
     
     with col2:
-        st.markdown("### 💡 Примеры")
-        examples = ["Что такое интеграл?", "Как найти определитель?", "Объясни метод Гаусса"]
-        for example in examples:
-            if st.button(example, use_container_width=True):
-                st.session_state.question = example
-                st.rerun()
-    
-    col_btn1, col_btn2 = st.columns(2)
-    with col_btn1:
-        ask_button = st.button("🎯 Получить ответ", type="primary", use_container_width=True, disabled=not question)
-    with col_btn2:
-        if st.button("🔄 Очистить", use_container_width=True):
-            st.session_state.clear()
+        if st.button("🔄 Новый вопрос", use_container_width=True):
+            st.session_state.question = ""
             st.rerun()
     
-    # Обработка вопроса
-    if ask_button and question:
-        with st.spinner("🔍 Ищу информацию в учебниках..."):
-            start_time = time.time()
-            answer = teacher.ask(question)
-            end_time = time.time()
-            
-            # Показываем вопрос
-            st.markdown(f"""
-            <div class="question-box">
-            <strong>❓ Вопрос:</strong><br>
-            {question}
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Показываем ответ
-            st.markdown(f"""
-            <div class="answer-box">
-            <strong>📚 Ответ:</strong><br>
-            {answer}
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Статистика
-            st.caption(f"⏱️ Время ответа: {end_time-start_time:.2f} секунд")
-            
-            # Кнопка копирования
-            if st.button("📋 Скопировать ответ"):
-                st.code(answer, language="markdown")
+    with col3:
+        if st.button("📜 История", use_container_width=True):
+            if "history" in st.session_state and st.session_state.history:
+                st.markdown("### 📜 История вопросов")
+                for i, item in enumerate(reversed(st.session_state.history[-5:])):
+                    with st.expander(f"❓ {item['question'][:50]}..."):
+                        st.markdown(f"**Время:** {item['time']:.1f} сек")
+                        st.markdown(f"**Ответ:** {item['answer'][:200]}...")
+            else:
+                st.info("📝 История вопросов пуста")
     
-    # Если нет вопроса
-    if not question and not ask_button:
-        st.markdown("---")
+    # Информация о системе
+    with st.expander("ℹ️ О системе"):
         st.markdown("""
-        ### 📝 Как использовать:
-        1. Введите вопрос в поле выше
-        2. Нажмите "Получить ответ"
-        3. Система найдет информацию в учебниках
-        4. Получите подробный ответ
+        **Как работает система:**
+        1. 📚 Загружает ваши учебники (PDF → текст)
+        2. 🔍 Ищет релевантные фрагменты по вопросу
+        3. 🤖 Отправляет контекст в DeepSeek AI
+        4. 📝 Получает подробный ответ
         
-        ### 🎯 Поддерживаемые темы:
-        - **Математический анализ:** производные, интегралы, пределы
-        - **Линейная алгебра:** матрицы, векторы, определители
-        - Поддержка русского и китайского языков
+        **Поддерживаемые темы:**
+        - Математический анализ
+        - Линейная алгебра
+        - Дифференциальные уравнения
+        
+        **Требования:**
+        - DeepSeek API ключ (добавьте в секреты)
+        - Папка `data/` с индексами учебников
         """)
 
+# Запуск приложения
 if __name__ == "__main__":
     main()
