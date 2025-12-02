@@ -17,9 +17,22 @@ st.set_page_config(
 
 # Загружаем KaTeX в самом начале
 st.markdown("""
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05" crossorigin="anonymous"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        renderMathInElement(document.body, {
+            delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$', right: '$', display: false},
+                {left: '\\(', right: '\\)', display: false},
+                {left: '\\[', right: '\\]', display: true}
+            ],
+            throwOnError: false
+        });
+    });
+</script>
 """, unsafe_allow_html=True)
 
 # CSS стили
@@ -46,23 +59,31 @@ st.markdown("""
         transform: translateY(-2px);
         box-shadow: 0 5px 15px rgba(0,0,0,0.1);
     }
-    /* Стили для формул */
+    /* Стили для математического контента */
     .math-content {
         font-size: 1.1em;
-        line-height: 1.6;
-    }
-    .katex { 
-        font-size: 1.1em !important;
+        line-height: 1.8;
+        margin: 1em 0;
+        padding: 20px;
         background-color: #f8f9fa;
-        padding: 2px 4px;
-        border-radius: 3px;
+        border-radius: 10px;
+        border-left: 4px solid #3B82F6;
     }
-    .katex-display { 
-        margin: 1em 0 !important;
-        padding: 10px;
-        background-color: #f8f9fa;
-        border-radius: 5px;
+    .math-content p {
+        margin-bottom: 1em;
+    }
+    .katex-display {
+        margin: 1.5em 0 !important;
+        padding: 1em;
+        background-color: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         overflow-x: auto;
+        overflow-y: hidden;
+    }
+    .katex {
+        font-size: 1.1em !important;
+        padding: 2px 4px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -79,7 +100,6 @@ class SimpleEmbedder:
         
         embeddings = []
         for text in texts:
-            # Детерминированный хэш для воспроизводимости
             text_hash = int(hashlib.md5(text.encode()).hexdigest()[:8], 16)
             np.random.seed(text_hash)
             emb = np.random.randn(self.dim).astype(np.float32)
@@ -115,20 +135,16 @@ class MathAssistant:
             try:
                 subject_path = os.path.join(self.data_dir, subject_name)
                 
-                # Проверяем необходимые файлы
                 required_files = ["config.json", "index.hnsw", "chunks.npy"]
                 if not all(os.path.exists(os.path.join(subject_path, f)) for f in required_files):
                     st.warning(f"⚠️ В папке '{subject_name}' не хватает файлов")
                     continue
                 
-                # Загружаем конфиг
                 with open(os.path.join(subject_path, "config.json"), 'r', encoding='utf-8') as f:
                     config = json.load(f)
                 
-                # Загружаем чанки
                 chunks = np.load(os.path.join(subject_path, "chunks.npy"), allow_pickle=True)
                 
-                # Загружаем HNSW индекс
                 dim = self.model.get_sentence_embedding_dimension()
                 index = hnswlib.Index(space='l2', dim=dim)
                 index.load_index(os.path.join(subject_path, "index.hnsw"), 
@@ -176,58 +192,54 @@ class MathAssistant:
         if not self.subjects:
             return "❌ Нет загруженных учебных материалов."
         
-        # Определяем предметы
         relevant_subjects = self.detect_subject(question)
         
-        # Собираем контекст
         all_contexts = []
         for subject_name in relevant_subjects:
             try:
                 chunks = self.search_in_subject(subject_name, question, top_k=3)
                 subject_title = self.subjects[subject_name]["config"]["subject"]
-                for i, chunk in enumerate(chunks[:3]):  # Берем только 3 лучших
+                for i, chunk in enumerate(chunks[:3]):
                     all_contexts.append(f"📘 {subject_title}:\n{chunk}\n")
             except Exception as e:
                 continue
         
         context = "\n".join(all_contexts)
         
-        # Формируем промпт с явным указанием использовать LaTeX
         if context.strip():
             system_prompt = f"""Ты — преподаватель математики. Отвечай на русском языке.
 
-ИСПОЛЬЗУЙ LaTeX ДЛЯ МАТЕМАТИЧЕСКИХ ФОРМУЛ:
-- Для встроенных формул: \\(формула\\)
-- Для формул на отдельной строке: \\[формула\\]
-- Или используй стандартные разделители: $формула$ и $$формула$$
+ВАЖНО: Все математические формулы должны быть записаны в формате LaTeX:
+- Для формул в строке: \\(формула\\)
+- Для вынесенных формул: $$формула$$
+- Используй стандартные обозначения LaTeX
 
-Примеры:
-- Производная функции: \\(f'(x) = \\lim_{{h \\to 0}} \\frac{{f(x+h)-f(x)}}{{h}}\\)
-- Интеграл: \\[\\int_a^b f(x) dx\\]
+Пример:
+Производная функции: \\(f'(x) = \\lim_{{h \\to 0}} \\frac{{f(x+h)-f(x)}}{{h}}\\)
+Интеграл: $$\\int_a^b f(x) dx$$
 
 ИНФОРМАЦИЯ ИЗ УЧЕБНИКОВ:
 {context}
 
 ВОПРОС: {question}
 
-ОТВЕТ (используй информацию из учебников если она есть, если нет — объясни своими словами, используй формулы в LaTeX):
+ОТВЕТ (обязательно используй LaTeX для всех математических выражений):
 """
         else:
-            system_prompt = f"""Ты — преподаватель математики. Отвечай понятно и подробно.
+            system_prompt = f"""Ты — преподаватель математики. Отвечай понятно и подробно на русском языке.
 
-ИСПОЛЬЗУЙ LaTeX ДЛЯ МАТЕМАТИЧЕСКИХ ФОРМУЛ:
-- Для встроенных формул: \\(формула\\)
-- Для формул на отдельной строке: \\[формула\\]
+ВСЕ математические формулы записывай в LaTeX:
+- Встроенные: \\(формула\\)
+- Вынесенные: $$формула$$
 
 ВОПРОС: {question}
 
 ОТВЕТ:
 """
         
-        # Отправляем запрос к DeepSeek
         api_key = st.secrets.get("DEEPSEEK_API_KEY", os.getenv("DEEPSEEK_API_KEY"))
         if not api_key:
-            return "❌ API ключ не настроен. Добавьте DEEPSEEK_API_KEY в секреты."
+            return "❌ API ключ не настроен. Добавьте DEEPSEEK_API_KEY в секреты Streamlit."
         
         payload = {
             "model": "deepseek-chat",
@@ -235,8 +247,8 @@ class MathAssistant:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": question}
             ],
-            "max_tokens": 1500,
-            "temperature": 0.7
+            "max_tokens": 2000,
+            "temperature": 0.3
         }
         
         try:
@@ -259,19 +271,40 @@ class MathAssistant:
             return f"❌ Ошибка соединения: {str(e)}"
 
 # ========== ИНТЕРФЕЙС STREAMLIT ==========
+def render_math_answer(answer: str):
+    """Отображает ответ с поддержкой LaTeX"""
+    # Оборачиваем ответ в div с классом для стилизации
+    html = f"""
+    <div class="math-content">
+        {answer}
+    </div>
+    <script>
+        // Перерендерим формулы после загрузки контента
+        if (window.renderMathInElement) {{
+            renderMathInElement(document.querySelector('.math-content'), {{
+                delimiters: [
+                    {{left: '$$', right: '$$', display: true}},
+                    {{left: '$', right: '$', display: false}},
+                    {{left: '\\\\(', right: '\\\\)', display: false}},
+                    {{left: '\\\\[', right: '\\\\]', display: true}}
+                ],
+                throwOnError: false
+            }});
+        }}
+    </script>
+    """
+    return html
+
 def main():
-    # Заголовок
     st.markdown('<h1 class="main-header">🎓 Математический Ассистент</h1>', unsafe_allow_html=True)
     st.markdown('<p style="text-align: center; color: #666;">AI-помощник по математике на основе ваших учебников</p>', unsafe_allow_html=True)
     
-    # Инициализация ассистента
     if "assistant" not in st.session_state:
         with st.spinner("🔄 Загружаю учебные материалы..."):
             st.session_state.assistant = MathAssistant("data")
     
     assistant = st.session_state.assistant
     
-    # Боковая панель
     with st.sidebar:
         st.image("https://cdn-icons-png.flaticon.com/512/2103/2103655.png", width=100)
         st.markdown("### 📚 Загруженные предметы")
@@ -288,7 +321,20 @@ def main():
                     """, unsafe_allow_html=True)
         else:
             st.warning("⚠️ Учебные материалы не загружены")
-            st.info("Убедитесь, что папка `data/` есть в репозитории")
+            st.info("""
+            Создайте структуру:
+            ```
+            data/
+            ├── matan/
+            │   ├── config.json
+            │   ├── index.hnsw
+            │   └── chunks.npy
+            └── linalg/
+                ├── config.json
+                ├── index.hnsw
+                └── chunks.npy
+            ```
+            """)
         
         st.markdown("---")
         st.markdown("### 💡 Примеры вопросов")
@@ -303,11 +349,10 @@ def main():
         for example in examples:
             if st.button(example, key=f"example_{example}"):
                 st.session_state.question = example
+                st.rerun()
     
-    # Основная область
     st.markdown("### 💭 Задайте вопрос по математике")
     
-    # Поле для вопроса
     question = st.text_area(
         "Введите ваш вопрос:",
         value=st.session_state.get("question", ""),
@@ -316,46 +361,7 @@ def main():
         label_visibility="collapsed"
     )
     
-    # Кнопки
     col1, col2, col3 = st.columns([1, 1, 1])
-    
-    # Проверяем, есть ли ответ для отображения
-    if "last_answer" in st.session_state:
-        st.markdown(f"### 📚 Ответ ({st.session_state.get('last_time', 0):.1f} сек)")
-        st.markdown("---")
-        
-        # Отображаем ответ с специальным классом
-        st.markdown(f'<div class="math-content" id="math-answer">{st.session_state.last_answer}</div>', unsafe_allow_html=True)
-        
-        # JavaScript для рендеринга формул
-        st.markdown("""
-        <script>
-        function renderMath() {
-            if (typeof renderMathInElement !== 'undefined') {
-                // Рендерим формулы во всем документе
-                renderMathInElement(document.body, {
-                    delimiters: [
-                        {left: '$$', right: '$$', display: true},
-                        {left: '$', right: '$', display: false},
-                        {left: '\\(', right: '\\)', display: false},
-                        {left: '\\[', right: '\\]', display: true}
-                    ],
-                    throwOnError: false,
-                    trust: true
-                });
-            }
-        }
-        
-        // Рендерим формулы сразу
-        renderMath();
-        
-        // И снова после небольшой задержки (на всякий случай)
-        setTimeout(renderMath, 100);
-        setTimeout(renderMath, 500);
-        </script>
-        """, unsafe_allow_html=True)
-        
-        st.code(st.session_state.last_answer, language="markdown")
     
     with col1:
         if st.button("🎯 Получить ответ", type="primary", use_container_width=True):
@@ -365,7 +371,6 @@ def main():
                     answer = assistant.ask(question)
                     elapsed = time.time() - start_time
                     
-                    # Сохраняем в историю
                     if "history" not in st.session_state:
                         st.session_state.history = []
                     st.session_state.history.append({
@@ -374,18 +379,14 @@ def main():
                         "time": elapsed
                     })
                     
-                    # Сохраняем ответ для отображения
                     st.session_state.last_answer = answer
                     st.session_state.last_time = elapsed
-                    
-                    # Перезагружаем страницу для отображения ответа
                     st.rerun()
             else:
                 st.warning("⚠️ Введите вопрос")
     
     with col2:
         if st.button("🔄 Новый вопрос", use_container_width=True):
-            # Очищаем предыдущий ответ
             if "last_answer" in st.session_state:
                 del st.session_state.last_answer
             st.session_state.question = ""
@@ -398,31 +399,22 @@ def main():
                 for i, item in enumerate(reversed(st.session_state.history[-5:])):
                     with st.expander(f"❓ {item['question'][:50]}..."):
                         st.markdown(f"**Время:** {item['time']:.1f} сек")
-                        st.markdown(f"**Ответ:**")
-                        st.markdown(f'<div class="math-content">{item["answer"][:500]}...</div>', unsafe_allow_html=True)
-                        
-                        # JavaScript для рендеринга формул в экспандере
-                        st.markdown("""
-                        <script>
-                        setTimeout(function() {
-                            if (typeof renderMathInElement !== 'undefined') {
-                                renderMathInElement(document.body, {
-                                    delimiters: [
-                                        {left: '$$', right: '$$', display: true},
-                                        {left: '$', right: '$', display: false},
-                                        {left: '\\(', right: '\\)', display: false},
-                                        {left: '\\[', right: '\\]', display: true}
-                                    ],
-                                    throwOnError: false
-                                });
-                            }
-                        }, 300);
-                        </script>
-                        """, unsafe_allow_html=True)
+                        st.markdown("**Ответ:**")
+                        st.markdown(render_math_answer(item["answer"][:500] + ("..." if len(item["answer"]) > 500 else "")), unsafe_allow_html=True)
             else:
                 st.info("📝 История вопросов пуста")
     
-    # Информация о системе
+    if "last_answer" in st.session_state:
+        st.markdown(f"### 📚 Ответ ({st.session_state.get('last_time', 0):.1f} сек)")
+        st.markdown("---")
+        
+        # Отображаем ответ с поддержкой LaTeX
+        st.markdown(render_math_answer(st.session_state.last_answer), unsafe_allow_html=True)
+        
+        # Отладочная информация (можно скрыть)
+        with st.expander("📄 Исходный текст ответа"):
+            st.text(st.session_state.last_answer)
+    
     with st.expander("ℹ️ О системе"):
         st.markdown("""
         **Как работает система:**
@@ -437,21 +429,25 @@ def main():
         - Дифференциальные уравнения
         
         **Требования:**
-        - DeepSeek API ключ (добавьте в секреты)
+        - DeepSeek API ключ (добавьте в секреты Streamlit)
         - Папка `data/` с индексами учебников
+        
+        **LaTeX поддержка:**
+        - Все формулы автоматически рендерятся с помощью KaTeX
+        - Используйте \\(формула\\) для встроенных формул
+        - Используйте $$формула$$ для вынесенных формул
         """)
         
-        # Тестовая кнопка для проверки KaTeX
-        if st.button("🧪 Проверить KaTeX"):
+        if st.button("🧪 Проверить LaTeX рендеринг"):
             test_math = r"""
             **Тест математических формул:**
             
             Встроенная формула: \(E = mc^2\)
             
             Формула на отдельной строке:
-            \[
+            $$
             \int_{-\infty}^{\infty} e^{-x^2} dx = \sqrt{\pi}
-            \]
+            $$
             
             Производная: $$\frac{dy}{dx} = \lim_{\Delta x \to 0} \frac{f(x+\Delta x) - f(x)}{\Delta x}$$
             
@@ -459,27 +455,7 @@ def main():
             
             Сумма: \(\sum_{i=1}^{n} i = \frac{n(n+1)}{2}\)
             """
-            st.markdown(f'<div class="math-content">{test_math}</div>', unsafe_allow_html=True)
-            
-            # JavaScript для рендеринга тестовых формул
-            st.markdown("""
-            <script>
-            setTimeout(function() {
-                if (typeof renderMathInElement !== 'undefined') {
-                    renderMathInElement(document.body, {
-                        delimiters: [
-                            {left: '$$', right: '$$', display: true},
-                            {left: '$', right: '$', display: false},
-                            {left: '\\(', right: '\\)', display: false},
-                            {left: '\\[', right: '\\]', display: true}
-                        ],
-                        throwOnError: false
-                    });
-                }
-            }, 100);
-            </script>
-            """, unsafe_allow_html=True)
+            st.markdown(render_math_answer(test_math), unsafe_allow_html=True)
 
-# Запуск приложения
 if __name__ == "__main__":
     main()
