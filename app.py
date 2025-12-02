@@ -360,6 +360,80 @@ def create_pdf(answer: str) -> bytes:
     buffer.seek(0)
     return buffer.getvalue()
 
+def generate_test(topic: str, count: int, difficulty: str, style: str, api_key: str):
+    prompt = f"""
+Ты — генератор математических тестов.
+
+Сформируй {count} задач по теме "{topic}".
+Сложность: {difficulty}.
+Стиль: {style}.
+
+Формат вывода СТРОГО:
+ЗАДАЧА 1: ...
+ЗАДАЧА 2: ...
+...
+Без решений, только условия.
+"""
+
+    payload = {
+        "model": "deepseek-chat",
+        "messages": [
+            {"role": "system", "content": "Ты — генератор экзаменационных задач. Выводи ТОЛЬКО задачи."},
+            {"role": "user", "content": prompt}
+        ]
+    }
+
+    response = requests.post(
+        "https://api.deepseek.com/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        },
+        json=payload,
+        timeout=60
+    )
+
+    return response.json()["choices"][0]["message"]["content"]
+
+
+def check_answers(tasks, user_answers, api_key: str):
+    prompt = "Ты — строгий экзаменатор. Проверь ответы студента.\n\n"
+
+    for i, task in enumerate(tasks, 1):
+        prompt += f"""
+ЗАДАЧА {i}: {task}
+Ответ студента: {user_answers.get(i, '---')}
+---
+"""
+
+    prompt += """
+Проанализируй КАЖДУЮ задачу:
+- ✔️ / ❌
+- правильный ответ
+- короткое объяснение
+- в конце выведи общий балл / количество задач
+"""
+
+    payload = {
+        "model": "deepseek-chat",
+        "messages": [
+            {"role": "system", "content": "Ты — строгий математический экзаменатор."},
+            {"role": "user", "content": prompt}
+        ]
+    }
+
+    response = requests.post(
+        "https://api.deepseek.com/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        },
+        json=payload,
+        timeout=120
+    )
+
+    return response.json()["choices"][0]["message"]["content"]
+
 def main():
     st.markdown('<h1 class="main-header">🎓 Mathematics Assistant</h1>', unsafe_allow_html=True)
     st.markdown('<p style="text-align: center; color: #666;">AI mathematics assistant based on your textbooks</p>', unsafe_allow_html=True)
@@ -367,6 +441,8 @@ def main():
     # Always load history (independent of assistant)
     if "history" not in st.session_state:
         st.session_state.history = load_history()
+
+    page = st.sidebar.selectbox("📂 Pages", ["Chat", "Test Maker", "History"])
 
     # Load assistant only once
     if "assistant" not in st.session_state:
@@ -496,6 +572,68 @@ def main():
         # Debug information (can be hidden)
         with st.expander("📄 Raw answer text"):
             st.text(st.session_state.last_answer)
+    elif page == "Test Maker":
+        api_key = st.secrets.get("DEEPSEEK_API_KEY", os.getenv("DEEPSEEK_API_KEY"))
+        if not api_key:
+            st.error("❌ No API key found.")
+            return
+
+        st.title("📝 Test Maker — генератор экзаменов")
+
+        # Состояния
+        if "test_tasks" not in st.session_state:
+            st.session_state.test_tasks = None
+
+        # Если тест еще не создан
+        if st.session_state.test_tasks is None:
+            st.subheader("Создать тест")
+
+            topic = st.text_input("📌 Тема", "Интегралы")
+            count = st.number_input("🔢 Кол-во задач", 1, 30, 10)
+            difficulty = st.selectbox("🔥 Сложность", ["Легко", "Средне", "Сложно", "Олимпиада"])
+            style = st.selectbox("📖 Стиль задач", ["Авторские", "Из учебников", "Смешанные"])
+
+            if st.button("🎯 Сгенерировать тест"):
+                with st.spinner("ИИ генерирует задачи..."):
+                    raw = generate_test(topic, count, difficulty, style, api_key)
+
+                # Парсим задачи
+                tasks = []
+                for line in raw.split("\n"):
+                    if line.strip().startswith("ЗАДАЧА"):
+                        try:
+                            tasks.append(line.split(":", 1)[1].strip())
+                        except:
+                            pass
+
+                if not tasks:
+                    st.error("❌ Не удалось распарсить задачи.")
+                else:
+                    st.session_state.test_tasks = tasks
+                    st.rerun()
+
+        # Если тест уже создан
+        else:
+            st.subheader("📘 Ваш тест")
+
+            tasks = st.session_state.test_tasks
+            user_answers = {}
+
+            for i, task in enumerate(tasks, 1):
+                st.markdown(f"### 🧩 Задача {i}")
+                st.markdown(task)
+                user_answers[i] = st.text_area(f"Ответ {i}", key=f"answer_{i}")
+
+            if st.button("✅ Проверить ответы"):
+                with st.spinner("ИИ проверяет..."):
+                    result = check_answers(tasks, user_answers, api_key)
+
+                st.markdown("### 📊 Результаты")
+                st.markdown(render_math_answer(result), unsafe_allow_html=True)
+
+            if st.button("🔄 Новый тест"):
+                st.session_state.test_tasks = None
+                st.rerun()
     
     with st.expander("ℹ️ About the System"):
         st.markdown("""
