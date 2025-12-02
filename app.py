@@ -211,20 +211,27 @@ class MathAssistant:
         context = "\n".join(all_contexts)
         
         if context.strip():
-            system_prompt = f"""You are a mathematics teacher. Answer in English.
+            system_prompt = f"""
+You are a mathematics teacher. Answer ONLY in clean LaTeX.
 
-            FORMAT RULE:
-Do NOT output KaTeX configuration objects such as {{left:'', right:''}}.
-Only output pure LaTeX inside $...$ or \[...\].
+STRICT RULES (must obey):
+1. Never output stray characters
+2. Every opening.
+3. No broken fragments.
+4. All formulas must be inside:
+   - Inline: \\( ... \\)
+   - Displayed: $$ ... $$
 
-IMPORTANT: All mathematical formulas must be written in LaTeX format:
-- For inline formulas: \\(formula\\)
-- For displayed formulas: $$formula$$
-- Use standard LaTeX notation
+5. Russian or English text must be outside math mode.
+   Example:
+   Пусть функция \\(f(x)\\) непрерывна…
 
-Example:
-Function derivative: \\(f'(x) = \\lim_{{h \\to 0}} \\frac{{f(x+h)-f(x)}}{{h}}\\)
-Integral: $$\\int_a^b f(x) dx$$
+6. NO KaTeX configuration objects like {{left:'', right:''}}.
+
+QUESTION:
+{question}
+
+ANSWER ONLY IN CLEAN PROPER LaTeX:
 
 INFORMATION FROM TEXTBOOKS:
 {context}
