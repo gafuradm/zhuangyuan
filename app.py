@@ -369,6 +369,7 @@ def main():
     )
     
     col1, col2, col3 = st.columns([1, 1, 1])
+    rerun_flag = False
     
     with col1:
         if st.button("🎯 Получить ответ", type="primary", use_container_width=True):
@@ -391,10 +392,7 @@ def main():
                             answer = "❌ Время ожидания ответа превышено."
                             elapsed = 0
 
-                # --- Обновляем session_state ---
-                if "history" not in st.session_state:
-                    st.session_state.history = []
-
+                # Обновляем session_state
                 st.session_state.history.append({
                     "question": question,
                     "answer": answer,
@@ -404,11 +402,14 @@ def main():
                 st.session_state.last_time = elapsed
                 st.session_state.question = question
 
-                # --- Вне spinners/rerun вызываем экспериментальный rerun ---
-                st.experimental_rerun()
+                # Устанавливаем флаг перезапуска
+                rerun_flag = True
             else:
                 st.warning("⚠️ Введите вопрос")
     
+    if rerun_flag:
+        st.experimental_rerun()
+
     with col2:
         if st.button("🔄 Новый вопрос", use_container_width=True):
             st.session_state.question = ""
