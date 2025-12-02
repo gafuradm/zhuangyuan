@@ -211,22 +211,31 @@ class MathAssistant:
         context = "\n".join(all_contexts)
         
         if context.strip():
-            system_prompt = f"""
-You are a mathematics teacher. Answer ONLY in clean LaTeX.
+            system_prompt = """
+You are a mathematics teacher. You output ONLY valid LaTeX.
 
-STRICT RULES (must obey):
-1. Never output stray characters
-2. Every opening.
-3. No broken fragments.
-4. All formulas must be inside:
-   - Inline: \\( ... \\)
-   - Displayed: $$ ... $$
+⚠️ STRICT RULES (deepseek must obey):
 
-5. Russian or English text must be outside math mode.
-   Example:
-   Пусть функция \\(f(x)\\) непрерывна…
+1. NEVER use \text without braces.
+   WRONG: \textНайти
+   RIGHT: \text{Найти}
 
-6. NO KaTeX configuration objects like {{left:'', right:''}}.
+2. Any Russian or English text MUST be wrapped:
+   \text{…}
+
+3. Any math must be inside:
+   Inline: \( ... \)
+   Block: $$ ... $$
+
+4. Forbidden output:
+   - stray "}"
+   - stray "{"
+   - broken commands like \mathbbR (must be \mathbb{R})
+   - fragments like: "} f(x)", "\textНайти", "}\text"
+
+5. If unsure, OUTPUT NOTHING but valid LaTeX.
+
+Give clean LaTeX only.
 
 QUESTION:
 {question}
@@ -278,7 +287,8 @@ ANSWER:
             )
             
             if response.status_code == 200:
-                return response.json()["choices"][0]["message"]["content"]
+                raw = response.json()["choices"][0]["message"]["content"]
+                return fix_latex(raw)
             else:
                 return f"❌ API Error ({response.status_code}): {response.text}"
                 
@@ -286,28 +296,37 @@ ANSWER:
             return f"❌ Connection error: {str(e)}"
         
 def fix_latex(raw: str) -> str:
-    """Automatically cleans bad LaTeX from DeepSeek."""
-
     text = raw
 
-    # 1. Удаляем одиночные '}' перед словами
-    text = re.sub(r"}\s*([А-Яа-яA-Za-z0-9\(])", r"\1", text)
+    # 0. Нормализуем пробелы
+    text = text.replace("\\text ", "\\text")  # Если пробел после команды
 
-    # 2. Удаляем '} ,' варианты
-    text = re.sub(r"}\s*,", ",", text)
+    # 1. Исправляем \textНайти → \text{Найти}
+    text = re.sub(r"\\text([А-Яа-яA-Za-z0-9])", r"\\text{\1", text)
+    # и закрываем фигурную в конце слова
+    text = re.sub(r"\\text\{([^}]*) (?=[А-Яа-яA-Za-z])", r"\\text{\1 ", text)
+    text = re.sub(r"(\\text\{[^}]*)$", r"\1}", text)
 
-    # 3. Исправляем '\text текст}' → '\text{текст}'
-    text = re.sub(r"\\text\s+([^{}]+)}", r"\\text{\1}", text)
+    # 2. Исправляем \text…} → \text{…}
+    text = re.sub(r"\\text([^{}]+)}", r"\\text{\1}", text)
 
-    # 4. Исправляем ' \text{' без закрытия
-    text = re.sub(r"\\text\{([^}]*)$", r"\\text{\1}", text)
+    # 3. Удаляем одинокие '}' или '{'
+    text = re.sub(r"(?<!\\)[{}](?=\s|$)", "", text)
 
-    # 5. Удаляем висящие одиночные '{' и '}'
-    text = re.sub(r"(?<!\\){\s*(?=[А-Яа-яA-Za-z])", "", text)
-    text = re.sub(r"(?<!\\)}", "", text)
+    # 4. Убираем } перед словом
+    text = re.sub(r"}\s*([A-Za-zА-Яа-я0-9\\(])", r"\1", text)
 
-    # 6. Чиним пробелы
-    text = re.sub(r"\s+", " ", text)
+    # 5. Добавляем закрывающую } если \text{ открыт
+    open_texts = text.count("\\text{")
+    close_texts = text.count("}")
+    if open_texts > close_texts:
+        text += "}" * (open_texts - close_texts)
+
+    # 6. Делает формулы валидными: \mathbbR → \mathbb{R}
+    text = re.sub(r"\\mathbb([A-Za-z])", r"\\mathbb{\1}", text)
+
+    # 7. Удаляем мусор вроде 0^x(x-t) → корректируем скобки
+    text = text.replace("0^x(", "0^{x}(")
 
     return text.strip()
 
