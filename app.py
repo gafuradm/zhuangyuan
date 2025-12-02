@@ -284,6 +284,32 @@ ANSWER:
                 
         except Exception as e:
             return f"❌ Connection error: {str(e)}"
+        
+def fix_latex(raw: str) -> str:
+    """Automatically cleans bad LaTeX from DeepSeek."""
+
+    text = raw
+
+    # 1. Удаляем одиночные '}' перед словами
+    text = re.sub(r"}\s*([А-Яа-яA-Za-z0-9\(])", r"\1", text)
+
+    # 2. Удаляем '} ,' варианты
+    text = re.sub(r"}\s*,", ",", text)
+
+    # 3. Исправляем '\text текст}' → '\text{текст}'
+    text = re.sub(r"\\text\s+([^{}]+)}", r"\\text{\1}", text)
+
+    # 4. Исправляем ' \text{' без закрытия
+    text = re.sub(r"\\text\{([^}]*)$", r"\\text{\1}", text)
+
+    # 5. Удаляем висящие одиночные '{' и '}'
+    text = re.sub(r"(?<!\\){\s*(?=[А-Яа-яA-Za-z])", "", text)
+    text = re.sub(r"(?<!\\)}", "", text)
+
+    # 6. Чиним пробелы
+    text = re.sub(r"\s+", " ", text)
+
+    return text.strip()
 
 # ========== STREAMLIT INTERFACE ==========
 def render_math_answer(answer: str):
@@ -440,7 +466,8 @@ def generate_test(topic: str, count: int, difficulty: str, style: str, api_key: 
         timeout=60
     )
 
-    return response.json()["choices"][0]["message"]["content"]
+    raw = response.json()["choices"][0]["message"]["content"]
+    return fix_latex(raw)
 
 
 def check_answers(tasks, user_answers, api_key: str):
@@ -495,7 +522,8 @@ def check_answers(tasks, user_answers, api_key: str):
         timeout=120
     )
 
-    return response.json()["choices"][0]["message"]["content"]
+    raw = response.json()["choices"][0]["message"]["content"]
+    return fix_latex(raw)
 
 def main():
     st.markdown('<h1 class="main-header">🎓 Mathematics Assistant</h1>', unsafe_allow_html=True)
