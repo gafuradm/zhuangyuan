@@ -10,6 +10,8 @@ import hashlib
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 import io
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 # ========== CONFIGURATION ==========
 st.set_page_config(
@@ -305,27 +307,25 @@ def save_history(history):
         json.dump(history, f, ensure_ascii=False, indent=2)
 
 def create_pdf(answer: str) -> bytes:
-    # Создаем буфер для PDF
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=letter)
     
-    # Устанавливаем позицию для текста
+    # Регистрация шрифта с поддержкой кириллицы
+    pdfmetrics.registerFont(TTFont('DejaVu', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'))
+    font_name = 'DejaVu'
+    
     y_position = 750
     line_height = 14
     
-    # Разбиваем текст на строки
     lines = answer.split("\n")
     
-    # Добавляем заголовок
-    pdf.setFont("Helvetica-Bold", 16)
+    pdf.setFont(font_name, 16)
     pdf.drawString(40, y_position, "Mathematics Assistant - Answer")
     y_position -= 30
     
-    # Основной текст
-    pdf.setFont("Helvetica", 12)
+    pdf.setFont(font_name, 12)
     
     for line in lines:
-        # Если текст слишком длинный, разбиваем на несколько строк
         if len(line) > 100:
             words = line.split()
             current_line = ""
@@ -333,9 +333,9 @@ def create_pdf(answer: str) -> bytes:
                 if len(current_line + " " + word) <= 100:
                     current_line += " " + word if current_line else word
                 else:
-                    if y_position < 50:  # Новая страница
+                    if y_position < 50:
                         pdf.showPage()
-                        pdf.setFont("Helvetica", 12)
+                        pdf.setFont(font_name, 12)
                         y_position = 750
                     pdf.drawString(40, y_position, current_line)
                     y_position -= line_height
@@ -343,14 +343,14 @@ def create_pdf(answer: str) -> bytes:
             if current_line:
                 if y_position < 50:
                     pdf.showPage()
-                    pdf.setFont("Helvetica", 12)
+                    pdf.setFont(font_name, 12)
                     y_position = 750
                 pdf.drawString(40, y_position, current_line)
                 y_position -= line_height
         else:
             if y_position < 50:
                 pdf.showPage()
-                pdf.setFont("Helvetica", 12)
+                pdf.setFont(font_name, 12)
                 y_position = 750
             pdf.drawString(40, y_position, line)
             y_position -= line_height
@@ -437,20 +437,24 @@ def check_answers(tasks, user_answers, api_key: str):
 # ======= Strategy Developer Module =======
 def generate_strategy(user_input: str, api_key: str) -> str:
     """
-    Generates a smart, pragmatic strategy based on user's input.
+    Generates a pragmatic, math-focused strategy based on user's input.
     user_input: string where user describes their conditions, level, goals
     """
     system_prompt = """
-You are a Strategy Developer AI. Your task is to create a super smart, 
-pragmatic, fast and efficient plan to achieve the user's goal. 
+You are a Strategy Developer AI specialized in mathematics.
 
 RULES:
-- Include step-by-step plan
-- Include lifehacks, productivity shortcuts, and "cheats" if applicable
-- Make it realistic but highly efficient
-- Optimize for speed and maximum results
-- Use bullet points, numbered lists, and highlights
-- Output in Russian
+- Focus primarily on technical aspects of mathematics learning.
+- Give concrete step-by-step methods for solving problems, mastering concepts, and practicing techniques.
+- Include tips for efficient learning of specific topics (algebra, calculus, linear algebra, etc.).
+- Include examples of exercises, problem-solving strategies, and memorization techniques if relevant.
+- Keep productivity and lifehacks only as supporting tools, not the main focus.
+- Optimize for speed, clarity, and practical results.
+- Output using bullet points, numbered lists, and clear headings.
+- Always emphasize understanding of mathematical content rather than general productivity.
+
+User input:
+{user_input}
 """
 
     payload = {
