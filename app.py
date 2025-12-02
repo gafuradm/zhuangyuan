@@ -310,7 +310,7 @@ def create_pdf(answer: str) -> bytes:
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=letter)
     
-    # Регистрация шрифта с поддержкой кириллицы
+    # Register font with Cyrillic support
     pdfmetrics.registerFont(TTFont('DejaVu', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'))
     font_name = 'DejaVu'
     
@@ -362,23 +362,23 @@ def create_pdf(answer: str) -> bytes:
 
 def generate_test(topic: str, count: int, difficulty: str, style: str, api_key: str):
     prompt = f"""
-Ты — генератор математических тестов.
+You are a mathematics test generator.
 
-Сформируй {count} задач по теме "{topic}".
-Сложность: {difficulty}.
-Стиль: {style}.
+Generate {count} problems on the topic "{topic}".
+Difficulty: {difficulty}.
+Style: {style}.
 
-Формат вывода СТРОГО:
-ЗАДАЧА 1: ...
-ЗАДАЧА 2: ...
+Output format STRICTLY:
+PROBLEM 1: ...
+PROBLEM 2: ...
 ...
-Без решений, только условия.
+No solutions, only problem statements.
 """
 
     payload = {
         "model": "deepseek-chat",
         "messages": [
-            {"role": "system", "content": "Ты — генератор экзаменационных задач. Выводи ТОЛЬКО задачи."},
+            {"role": "system", "content": "You are an exam problem generator. Output ONLY problems."},
             {"role": "user", "content": prompt}
         ]
     }
@@ -397,27 +397,27 @@ def generate_test(topic: str, count: int, difficulty: str, style: str, api_key: 
 
 
 def check_answers(tasks, user_answers, api_key: str):
-    prompt = "Ты — строгий экзаменатор. Проверь ответы студента.\n\n"
+    prompt = "You are a strict examiner. Check the student's answers.\n\n"
 
     for i, task in enumerate(tasks, 1):
         prompt += f"""
-ЗАДАЧА {i}: {task}
-Ответ студента: {user_answers.get(i, '---')}
+PROBLEM {i}: {task}
+Student's answer: {user_answers.get(i, '---')}
 ---
 """
 
     prompt += """
-Проанализируй КАЖДУЮ задачу:
+Analyze EACH problem:
 - ✔️ / ❌
-- правильный ответ
-- короткое объяснение
-- в конце выведи общий балл / количество задач
+- correct answer
+- brief explanation
+- at the end, output total score / number of problems
 """
 
     payload = {
         "model": "deepseek-chat",
         "messages": [
-            {"role": "system", "content": "Ты — строгий математический экзаменатор."},
+            {"role": "system", "content": "You are a strict mathematics examiner."},
             {"role": "user", "content": prompt}
         ]
     }
@@ -630,91 +630,91 @@ def main():
             st.error("❌ No API key found.")
             return
 
-        st.title("📝 Test Maker — генератор экзаменов")
+        st.title("📝 Test Maker — exam generator")
 
-        # Состояния
+        # States
         if "test_tasks" not in st.session_state:
             st.session_state.test_tasks = None
 
-        # Если тест еще не создан
+        # If test is not created yet
         if st.session_state.test_tasks is None:
-            st.subheader("Создать тест")
+            st.subheader("Create test")
 
-            topic = st.text_input("📌 Тема", "Интегралы")
-            count = st.number_input("🔢 Кол-во задач", 1, 30, 10)
-            difficulty = st.selectbox("🔥 Сложность", ["Легко", "Средне", "Сложно", "Олимпиада"])
-            style = st.selectbox("📖 Стиль задач", ["Авторские", "Из учебников", "Смешанные"])
+            topic = st.text_input("📌 Topic", "Integrals")
+            count = st.number_input("🔢 Number of problems", 1, 30, 10)
+            difficulty = st.selectbox("🔥 Difficulty", ["Easy", "Medium", "Hard", "Olympiad"])
+            style = st.selectbox("📖 Problem style", ["Original", "From textbooks", "Mixed"])
 
-            if st.button("🎯 Сгенерировать тест"):
-                with st.spinner("ИИ генерирует задачи..."):
+            if st.button("🎯 Generate test"):
+                with st.spinner("AI is generating problems..."):
                     raw = generate_test(topic, count, difficulty, style, api_key)
 
-                # Парсим задачи
+                # Parse problems
                 tasks = []
                 for line in raw.split("\n"):
-                    if line.strip().startswith("ЗАДАЧА"):
+                    if line.strip().startswith("PROBLEM"):
                         try:
                             tasks.append(line.split(":", 1)[1].strip())
                         except:
                             pass
 
                 if not tasks:
-                    st.error("❌ Не удалось распарсить задачи.")
+                    st.error("❌ Could not parse problems.")
                 else:
                     st.session_state.test_tasks = tasks
                     st.rerun()
 
-        # Если тест уже создан
+        # If test is already created
         else:
-            st.subheader("📘 Ваш тест")
+            st.subheader("📘 Your test")
 
             tasks = st.session_state.test_tasks
             user_answers = {}
 
             for i, task in enumerate(tasks, 1):
-                st.markdown(f"### 🧩 Задача {i}")
+                st.markdown(f"### 🧩 Problem {i}")
                 st.markdown(task)
-                user_answers[i] = st.text_area(f"Ответ {i}", key=f"answer_{i}")
+                user_answers[i] = st.text_area(f"Answer {i}", key=f"answer_{i}")
 
-            if st.button("✅ Проверить ответы"):
-                with st.spinner("ИИ проверяет..."):
+            if st.button("✅ Check answers"):
+                with st.spinner("AI is checking..."):
                     result = check_answers(tasks, user_answers, api_key)
 
-                st.markdown("### 📊 Результаты")
+                st.markdown("### 📊 Results")
                 st.markdown(render_math_answer(result), unsafe_allow_html=True)
 
-            if st.button("🔄 Новый тест"):
+            if st.button("🔄 New test"):
                 st.session_state.test_tasks = None
                 st.rerun()
 
     # ===== Strategy Developer Page =====
     if page == "Strategy Developer":
-        st.title("🧠 Разработчик стратегии")
+        st.title("🧠 Strategy Developer")
         
         st.markdown("""
-        Опишите ваши условия, уровень, цели, ресурсы и ограничения. 
-        ИИ разработает максимально хитрую, прагматичную стратегию с лайфхаками.
+        Describe your conditions, level, goals, resources, and limitations. 
+        AI will develop a cunning, pragmatic strategy with lifehacks.
         """)
 
-        user_input = st.text_area("Ваше описание", height=200)
+        user_input = st.text_area("Your description", height=200)
         
         api_key = st.secrets.get("DEEPSEEK_API_KEY", os.getenv("DEEPSEEK_API_KEY"))
         
-        if st.button("🚀 Создать стратегию"):
+        if st.button("🚀 Create strategy"):
             if not user_input.strip():
-                st.warning("⚠️ Введите описание ваших условий и целей")
+                st.warning("⚠️ Enter description of your conditions and goals")
             elif not api_key:
-                st.error("❌ API ключ не найден")
+                st.error("❌ API key not found")
             else:
-                with st.spinner("ИИ разрабатывает стратегию..."):
+                with st.spinner("AI is developing strategy..."):
                     strategy = generate_strategy(user_input, api_key)
-                    st.markdown("### 🗂 Ваша стратегия")
+                    st.markdown("### 🗂 Your strategy")
                     st.markdown(render_math_answer(strategy), unsafe_allow_html=True)
 
                 # PDF download
                 pdf_bytes = create_pdf(strategy)
                 st.download_button(
-                    label="📄 Скачать стратегию PDF",
+                    label="📄 Download strategy PDF",
                     data=pdf_bytes,
                     file_name="strategy.pdf",
                     mime="application/pdf"
