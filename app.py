@@ -212,43 +212,42 @@ class MathAssistant:
         
         if context.strip():
             system_prompt = """
-You are a mathematics teacher. You output ONLY valid LaTeX.
+You are a mathematical exam generator.
+You MUST output STRICT and VALID LaTeX.
 
-⚠️ STRICT RULES (deepseek must obey):
+ABSOLUTE RULES:
 
-1. NEVER use \text without braces.
-   WRONG: \textНайти
-   RIGHT: \text{Найти}
+1. Every integral MUST have:
+   - limits wrapped in braces: \int_{a}^{b}
+   - no missing braces
+   - dx always wrapped: \, dx
 
-2. Any Russian or English text MUST be wrapped:
-   \text{…}
+2. Every fraction MUST be:
+   \frac{ <numerator> }{ <denominator> }
 
-3. Any math must be inside:
-   Inline: \( ... \)
-   Block: $$ ... $$
+3. ALWAYS wrap complex upper/lower limits in braces:
+   WRONG: \int_{0}^{\pi x \sin x}
+   RIGHT: \int_{0}^{\pi x \sin x} → INVALID
+   TRUE RIGHT: \int_{0}^{\pi} x \sin x \, dx
 
-4. Forbidden output:
-   - stray "}"
-   - stray "{"
-   - broken commands like \mathbbR (must be \mathbb{R})
-   - fragments like: "} f(x)", "\textНайти", "}\text"
+   If you generate an expression as a limit, ALWAYS do:
+   \int_{0}^{ {\pi \cdot \frac{x \sin x}{1+\cos^2 x}} }
 
-5. If unsure, OUTPUT NOTHING but valid LaTeX.
+4. NEVER output broken LaTeX like:
+   - missing "}"
+   - missing "{"
+   - merged text and math
+   - incomplete commands: \int_{0}^{\pi \frac{x}
 
-Give clean LaTeX only.
+5. If LaTeX is invalid — FIX YOURSELF before output.
 
-QUESTION:
-{question}
+6. For text ALWAYS use:
+   \text{ ... }
 
-ANSWER ONLY IN CLEAN PROPER LaTeX:
+7. Output ONLY LaTeX. No prose.
 
-INFORMATION FROM TEXTBOOKS:
-{context}
-
-QUESTION: {question}
-
-ANSWER (always use LaTeX for all mathematical expressions):
 """
+
         else:
             system_prompt = f"""You are a mathematics teacher. Answer clearly and in detail in English.
 
