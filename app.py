@@ -374,18 +374,25 @@ def main():
         if st.button("🎯 Получить ответ", type="primary", use_container_width=True):
             if question.strip():
                 with st.spinner("🔍 Ищу информацию в учебниках..."):
-                    def get_ai_answer(assistant, question):
-                        return assistant.ask(question)
                     
+                    def get_ai_answer(assistant, question):
+                        start_time = time.time()
+                        ans = assistant.ask(question)
+                        elapsed = time.time() - start_time
+                        return ans, elapsed
+
                     with concurrent.futures.ThreadPoolExecutor() as executor:
                         future = executor.submit(get_ai_answer, assistant, question)
                         try:
-                            answer = future.result(timeout=60)  # ждём максимум 60 секунд
-                            elapsed = 0  # можно потом замерять время внутри функции
+                            answer, elapsed = future.result(timeout=60)
                         except concurrent.futures.TimeoutError:
                             st.error("⏳ Слишком долгий ответ от AI, попробуйте позже.")
                             answer = "❌ Время ожидания ответа превышено."
                             elapsed = 0
+
+                    # --- Обновляем session_state до rerun ---
+                    if "history" not in st.session_state:
+                        st.session_state.history = []
 
                     st.session_state.history.append({
                         "question": question,
@@ -396,16 +403,16 @@ def main():
                     st.session_state.last_answer = answer
                     st.session_state.last_time = elapsed
                     st.session_state.question = question
-                    st.rerun()
+
+                    st.experimental_rerun()  # корректная перезагрузка
             else:
                 st.warning("⚠️ Введите вопрос")
     
     with col2:
         if st.button("🔄 Новый вопрос", use_container_width=True):
-            if "last_answer" in st.session_state:
-                del st.session_state.last_answer
             st.session_state.question = ""
-            st.rerun()
+            st.session_state.last_answer = ""
+            st.experimental_rerun()
     
     with col3:
         if st.button("📜 История", use_container_width=True):
