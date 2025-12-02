@@ -362,25 +362,35 @@ def create_pdf(answer: str) -> bytes:
 
 def generate_test(topic: str, count: int, difficulty: str, style: str, api_key: str):
     prompt = f"""
-Ты — генератор математических тестов.
+You are a mathematics test generator. Generate {count} problems on the topic "{topic}".
+Difficulty: {difficulty}.
+Style: {style}.
 
-Сформируй {count} задач по теме "{topic}".
-Сложность: {difficulty}.
-Стиль: {style}.
+FORMAT RULES:
+1. ALL mathematical expressions MUST be in LaTeX:
+   - Inline formulas: \\(formula\\)
+   - Displayed formulas: $$formula$$
+2. Output format STRICTLY:
+   PROBLEM 1: [problem text with LaTeX]
+   PROBLEM 2: [problem text with LaTeX]
+   ...
+3. No solutions, only problem statements.
 
-Формат вывода СТРОГО:
-ЗАДАЧА 1: ...
-ЗАДАЧА 2: ...
-...
-Без решений, только условия.
+Example problems:
+PROBLEM 1: Find the derivative of \\(f(x) = x^2 \\sin(x)\\) at \\(x = \\pi\\).
+PROBLEM 2: Calculate the integral: $$\\int_0^1 (3x^2 + 2x + 1) dx$$
+PROBLEM 3: Solve the differential equation: $$\\frac{{d^2y}}{{dx^2}} + 3\\frac{{dy}}{{dx}} + 2y = 0$$
+PROBLEM 4: Find the eigenvalues of matrix: $$\\begin{{pmatrix}} 1 & 2 \\\\ 3 & 4 \\end{{pmatrix}}$$
 """
 
     payload = {
         "model": "deepseek-chat",
         "messages": [
-            {"role": "system", "content": "Ты — генератор экзаменационных задач. Выводи ТОЛЬКО задачи."},
+            {"role": "system", "content": "You are a mathematics exam problem generator. Use LaTeX for ALL mathematical expressions."},
             {"role": "user", "content": prompt}
-        ]
+        ],
+        "max_tokens": 2000,
+        "temperature": 0.3
     }
 
     response = requests.post(
@@ -395,31 +405,48 @@ def generate_test(topic: str, count: int, difficulty: str, style: str, api_key: 
 
     return response.json()["choices"][0]["message"]["content"]
 
-
 def check_answers(tasks, user_answers, api_key: str):
-    prompt = "Ты — строгий экзаменатор. Проверь ответы студента.\n\n"
+    prompt = """You are a strict mathematics examiner. Check the student's answers. Use LaTeX for ALL mathematical expressions.
+
+FORMAT RULES:
+1. All mathematical formulas MUST be in LaTeX: \\(formula\\) or $$formula$$
+2. For each problem provide:
+   - ✔️ or ❌
+   - Correct answer (in LaTeX)
+   - Brief explanation
+3. At the end provide total score in format: Score: X/Y
+4. Always use English for explanations.
+
+"""
 
     for i, task in enumerate(tasks, 1):
         prompt += f"""
-ЗАДАЧА {i}: {task}
-Ответ студента: {user_answers.get(i, '---')}
+PROBLEM {i}: {task}
+Student's answer: {user_answers.get(i, '---')}
 ---
 """
 
     prompt += """
-Проанализируй КАЖДУЮ задачу:
-- ✔️ / ❌
-- правильный ответ
-- короткое объяснение
-- в конце выведи общий балл / количество задач
+Example output:
+✔️ PROBLEM 1: Correct
+Correct answer: \\(f'(x) = 2x\\sin(x) + x^2\\cos(x)\\)
+Explanation: Used the product rule for derivatives.
+
+❌ PROBLEM 2: Incorrect
+Correct answer: $$\\frac{5}{3}$$
+Explanation: The student made an error in integration limits.
+
+Score: 1/2
 """
 
     payload = {
         "model": "deepseek-chat",
         "messages": [
-            {"role": "system", "content": "Ты — строгий математический экзаменатор."},
+            {"role": "system", "content": "You are a strict mathematics examiner. Output all mathematical expressions in LaTeX."},
             {"role": "user", "content": prompt}
-        ]
+        ],
+        "max_tokens": 2500,
+        "temperature": 0.1
     }
 
     response = requests.post(
