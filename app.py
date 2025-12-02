@@ -12,6 +12,9 @@ from reportlab.pdfgen import canvas
 import io
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+import fitz  # для PDF
+from PIL import Image  # для изображений
+import pytesseract  # OCR
 
 # ========== CONFIGURATION ==========
 st.set_page_config(
@@ -484,6 +487,29 @@ User input:
             return f"❌ API Error ({response.status_code}): {response.text}"
     except Exception as e:
         return f"❌ Connection error: {str(e)}"
+    
+def extract_text_from_pdf(file):
+    text = ""
+    doc = fitz.open(stream=file.read(), filetype="pdf")
+    for page in doc:
+        text += page.get_text()
+    return text
+
+# --- Изображения ---
+def extract_text_from_image(file):
+    image = Image.open(file)
+    text = pytesseract.image_to_string(image, lang='eng')  # или 'rus+eng' для русского
+    return text
+
+# --- Все файлы ---
+def extract_text_from_files(files):
+    combined_text = ""
+    for f in files:
+        if f.type == "application/pdf":
+            combined_text += extract_text_from_pdf(f) + "\n"
+        elif f.type.startswith("image/"):
+            combined_text += extract_text_from_image(f) + "\n"
+    return combined_text
 
 def main():
     st.markdown('<h1 class="main-header">🎓 Mathematics Assistant</h1>', unsafe_allow_html=True)
@@ -558,32 +584,47 @@ def main():
         height=120,
         label_visibility="collapsed"
     )
+
+    uploaded_files = st.file_uploader(
+    "📎 Upload PDF or image",
+    type=["pdf", "png", "jpg", "jpeg"],
+    accept_multiple_files=True)
+
     
     col1, col2, col3 = st.columns([1, 1, 1])
     
     with col1:
         if st.button("🎯 Get Answer", type="primary", use_container_width=True):
-            if question.strip():
-                with st.spinner("🔍 Searching information in textbooks..."):
+            if not question.strip() and not uploaded_files:
+                st.warning("⚠️ Введите вопрос или загрузите файлы")
+            else:
+                context_text = extract_text_from_files(uploaded_files) if uploaded_files else ""
+                full_prompt = f"""
+    QUESTION: {question}
+
+    CONTEXT FROM UPLOADED FILES:
+    {context_text}
+
+    ANSWER in LaTeX, step-by-step explanation if needed:
+    """
+                with st.spinner("🔍 Processing..."):
                     start_time = time.time()
-                    answer = assistant.ask(question)
+                    answer = assistant.ask(full_prompt)
                     elapsed = time.time() - start_time
-                    
+
                     if "history" not in st.session_state:
                         st.session_state.history = []
                     st.session_state.history.append({
                         "question": question,
+                        "files": [f.name for f in uploaded_files] if uploaded_files else [],
                         "answer": answer,
                         "time": elapsed
                     })
-
                     save_history(st.session_state.history)
-                    
+
                     st.session_state.last_answer = answer
                     st.session_state.last_time = elapsed
                     st.rerun()
-            else:
-                st.warning("⚠️ Please enter a question")
     
     with col2:
         if st.button("🔄 New Question", use_container_width=True):
