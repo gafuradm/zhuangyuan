@@ -16,135 +16,258 @@ st.set_page_config(
 )
 
 # ========== ТЕМНАЯ ТЕМА ==========
-def apply_dark_theme():
-    """Применяет темную тему"""
-    st.markdown("""
-    <style>
-    .stApp {
-        background-color: #0E1117;
-        color: #FAFAFA;
-    }
+def apply_custom_theme(dark_mode=True):
+    """Применяет кастомную тему"""
+    if dark_mode:
+        theme_css = """
+        <style>
+        /* Основные стили для темной темы */
+        .stApp {
+            background-color: #0E1117;
+        }
+        
+        /* Заголовки */
+        h1, h2, h3, h4, h5, h6 {
+            color: #60A5FA !important;
+        }
+        
+        .main-header {
+            font-size: 2.5rem;
+            color: #60A5FA !important;
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+        
+        /* Основной текст */
+        .stMarkdown, .stText, p, div {
+            color: #FAFAFA !important;
+        }
+        
+        /* Карточки предметов */
+        .subject-card {
+            background: #1E293B;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+            border-left: 4px solid #3B82F6;
+            color: #E2E8F0 !important;
+        }
+        
+        .subject-card strong {
+            color: #60A5FA !important;
+        }
+        
+        /* Математический контент */
+        .math-content {
+            font-size: 1.1em;
+            line-height: 1.8;
+            margin: 1em 0;
+            padding: 20px;
+            background-color: #1E293B;
+            border-radius: 10px;
+            border-left: 4px solid #3B82F6;
+            color: #E2E8F0 !important;
+        }
+        
+        .math-content p {
+            margin-bottom: 1em;
+            color: #E2E8F0 !important;
+        }
+        
+        /* KaTeX */
+        .katex-display {
+            margin: 1.5em 0 !important;
+            padding: 1em;
+            background-color: #0F172A;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            overflow-x: auto;
+            overflow-y: hidden;
+        }
+        
+        /* Текстовое поле */
+        .stTextArea textarea {
+            background-color: #1E293B !important;
+            color: #FAFAFA !important;
+            border: 1px solid #334155 !important;
+        }
+        
+        /* Кнопки */
+        .stButton button {
+            width: 100%;
+            transition: all 0.3s;
+            background-color: #1E40AF !important;
+            color: white !important;
+            border: none !important;
+        }
+        
+        .stButton button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(59, 130, 246, 0.3) !important;
+            background-color: #2563EB !important;
+        }
+        
+        .stButton button[kind="primary"] {
+            background-color: #2563EB !important;
+        }
+        
+        .stButton button[kind="primary"]:hover {
+            background-color: #3B82F6 !important;
+        }
+        
+        /* Expander */
+        .streamlit-expanderHeader {
+            background-color: #1E293B !important;
+            color: #E2E8F0 !important;
+            border: 1px solid #334155 !important;
+        }
+        
+        .streamlit-expanderContent {
+            background-color: #1E293B !important;
+            color: #E2E8F0 !important;
+        }
+        
+        /* Сайдбар */
+        [data-testid="stSidebar"] {
+            background-color: #0F172A !important;
+        }
+        
+        [data-testid="stSidebar"] .stMarkdown {
+            color: #E2E8F0 !important;
+        }
+        
+        [data-testid="stSidebar"] h1,
+        [data-testid="stSidebar"] h2,
+        [data-testid="stSidebar"] h3 {
+            color: #60A5FA !important;
+        }
+        
+        /* Предупреждения и информация */
+        .stAlert {
+            background-color: #1E293B !important;
+            border: 1px solid #334155 !important;
+        }
+        
+        /* Иконки */
+        .st-emotion-cache-1v0mbdj {
+            filter: brightness(0.8);
+        }
+        
+        /* Секции */
+        .stMarkdown h3 {
+            color: #60A5FA !important;
+            border-bottom: 2px solid #3B82F6;
+            padding-bottom: 0.5rem;
+        }
+        
+        /* Разделитель */
+        hr {
+            border-color: #334155 !important;
+        }
+        
+        </style>
+        """
+    else:
+        theme_css = """
+        <style>
+        /* Светлая тема */
+        .stApp {
+            background-color: #FFFFFF;
+        }
+        
+        .main-header {
+            font-size: 2.5rem;
+            color: #1E3A8A !important;
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+        
+        .stMarkdown, .stText, p, div {
+            color: #0F172A !important;
+        }
+        
+        .subject-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+            border-left: 4px solid #3B82F6;
+            color: #0F172A !important;
+        }
+        
+        .subject-card strong {
+            color: #1E40AF !important;
+        }
+        
+        .math-content {
+            font-size: 1.1em;
+            line-height: 1.8;
+            margin: 1em 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 10px;
+            border-left: 4px solid #3B82F6;
+            color: #0F172A !important;
+        }
+        
+        .katex-display {
+            margin: 1.5em 0 !important;
+            padding: 1em;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .stTextArea textarea {
+            background-color: white !important;
+            color: #0F172A !important;
+            border: 1px solid #CBD5E1 !important;
+        }
+        
+        .streamlit-expanderHeader {
+            background-color: #f8f9fa !important;
+            color: #0F172A !important;
+            border: 1px solid #E2E8F0 !important;
+        }
+        
+        .streamlit-expanderContent {
+            background-color: #f8f9fa !important;
+            color: #0F172A !important;
+        }
+        
+        [data-testid="stSidebar"] {
+            background-color: #f8fafc !important;
+        }
+        
+        [data-testid="stSidebar"] .stMarkdown {
+            color: #0F172A !important;
+        }
+        
+        [data-testid="stSidebar"] h1,
+        [data-testid="stSidebar"] h2,
+        [data-testid="stSidebar"] h3 {
+            color: #1E40AF !important;
+        }
+        
+        .stAlert {
+            background-color: #f8f9fa !important;
+            border: 1px solid #E2E8F0 !important;
+        }
+        
+        .stMarkdown h3 {
+            color: #1E40AF !important;
+            border-bottom: 2px solid #3B82F6;
+            padding-bottom: 0.5rem;
+        }
+        
+        hr {
+            border-color: #E2E8F0 !important;
+        }
+        
+        </style>
+        """
     
-    .main-header {
-        font-size: 2.5rem;
-        color: #60A5FA !important;
-        text-align: center;
-        margin-bottom: 1rem;
-    }
-    
-    .subject-card {
-        background: #1E293B;
-        padding: 15px;
-        border-radius: 10px;
-        margin: 10px 0;
-        border-left: 4px solid #3B82F6;
-        color: #E2E8F0;
-    }
-    
-    .math-content {
-        font-size: 1.1em;
-        line-height: 1.8;
-        margin: 1em 0;
-        padding: 20px;
-        background-color: #1E293B;
-        border-radius: 10px;
-        border-left: 4px solid #3B82F6;
-        color: #E2E8F0;
-    }
-    
-    .math-content p {
-        margin-bottom: 1em;
-    }
-    
-    .katex-display {
-        margin: 1.5em 0 !important;
-        padding: 1em;
-        background-color: #0F172A;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-        overflow-x: auto;
-        overflow-y: hidden;
-    }
-    
-    .stTextArea textarea {
-        background-color: #1E293B;
-        color: #FAFAFA;
-        border: 1px solid #334155;
-    }
-    
-    .stTextArea label {
-        color: #E2E8F0 !important;
-    }
-    
-    .stButton button {
-        width: 100%;
-        transition: all 0.3s;
-        background-color: #1E40AF;
-        color: white;
-        border: none;
-    }
-    
-    .stButton button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 5px 15px rgba(59, 130, 246, 0.3);
-        background-color: #2563EB;
-    }
-    
-    .stButton button[kind="primary"] {
-        background-color: #2563EB;
-    }
-    
-    .stButton button[kind="primary"]:hover {
-        background-color: #3B82F6;
-    }
-    
-    .stExpander {
-        background-color: #1E293B;
-        border: 1px solid #334155;
-        border-radius: 8px;
-    }
-    
-    .stExpander summary {
-        color: #E2E8F0;
-    }
-    
-    /* Стили для светлой темы */
-    .light-theme .stApp {
-        background-color: #FFFFFF;
-        color: #0F172A;
-    }
-    
-    .light-theme .main-header {
-        color: #1E3A8A !important;
-    }
-    
-    .light-theme .subject-card {
-        background: #f8f9fa;
-        color: #0F172A;
-    }
-    
-    .light-theme .math-content {
-        background-color: #f8f9fa;
-        color: #0F172A;
-    }
-    
-    .light-theme .katex-display {
-        background-color: white;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    
-    .light-theme .stTextArea textarea {
-        background-color: white;
-        color: #0F172A;
-        border: 1px solid #CBD5E1;
-    }
-    
-    .light-theme .stExpander {
-        background-color: #f8f9fa;
-        border: 1px solid #E2E8F0;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    st.markdown(theme_css, unsafe_allow_html=True)
 
 # Загружаем KaTeX в самом начале
 st.markdown("""
@@ -379,27 +502,31 @@ def save_history(history):
         json.dump(history, f, ensure_ascii=False, indent=2)
 
 def main():
-    # Тема по умолчанию (темная)
+    # Инициализация темы
     if "dark_theme" not in st.session_state:
         st.session_state.dark_theme = True
     
-    # Применяем тему
-    if st.session_state.dark_theme:
-        apply_dark_theme()
-    else:
-        st.markdown('<div class="light-theme">', unsafe_allow_html=True)
-        apply_dark_theme()
+    # Применяем тему сразу
+    apply_custom_theme(st.session_state.dark_theme)
     
+    # Кнопка переключения темы в сайдбаре
+    with st.sidebar:
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown("### 🎨 Theme")
+        with col2:
+            theme_icon = "🌙" if st.session_state.dark_theme else "☀️"
+            theme_label = "Dark" if st.session_state.dark_theme else "Light"
+            if st.button(f"{theme_icon}", key="theme_toggle", help=f"Switch to {theme_label} theme"):
+                st.session_state.dark_theme = not st.session_state.dark_theme
+                st.rerun()
+        
+        st.markdown(f"**Current theme:** {'Dark' if st.session_state.dark_theme else 'Light'}")
+        st.markdown("---")
+    
+    # Основной контент
     st.markdown('<h1 class="main-header">🎓 Math Assistant</h1>', unsafe_allow_html=True)
-    st.markdown('<p style="text-align: center; color: #94A3B8;">AI math assistant based on your textbooks</p>', unsafe_allow_html=True)
-    
-    # Кнопка переключения темы
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col3:
-        theme_label = "🌙 Dark" if st.session_state.dark_theme else "☀️ Light"
-        if st.button(theme_label, key="theme_toggle"):
-            st.session_state.dark_theme = not st.session_state.dark_theme
-            st.rerun()
+    st.markdown('<p style="text-align: center;">AI math assistant based on your textbooks</p>', unsafe_allow_html=True)
     
     # Загружаем историю всегда (независимо от assistant)
     if "history" not in st.session_state:
@@ -412,6 +539,7 @@ def main():
     
     assistant = st.session_state.assistant
     
+    # Сайдбар с контентом
     with st.sidebar:
         st.image("https://cdn-icons-png.flaticon.com/512/2103/2103655.png", width=100)
         st.markdown("### 📚 Loaded Subjects")
@@ -458,6 +586,7 @@ def main():
                 st.session_state.question = example
                 st.rerun()
     
+    # Основная область
     st.markdown("### 💭 Ask a Math Question")
     
     question = st.text_area(
@@ -520,7 +649,7 @@ def main():
         # Отображаем ответ с поддержкой LaTeX
         st.markdown(render_math_answer(st.session_state.last_answer), unsafe_allow_html=True)
         
-        # Debug information (can be hidden)
+        # Debug information
         with st.expander("📄 Raw answer text"):
             st.text(st.session_state.last_answer)
     
@@ -565,10 +694,6 @@ def main():
             Sum: \(\sum_{i=1}^{n} i = \frac{n(n+1)}{2}\)
             """
             st.markdown(render_math_answer(test_math), unsafe_allow_html=True)
-    
-    # Закрываем div для светлой темы
-    if not st.session_state.dark_theme:
-        st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
