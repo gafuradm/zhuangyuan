@@ -7,7 +7,6 @@ import hnswlib
 from typing import List
 import time
 import hashlib
-import concurrent.futures
 
 # ========== КОНФИГУРАЦИЯ ==========
 st.set_page_config(
@@ -296,23 +295,36 @@ def render_math_answer(answer: str):
     """
     return html
 
+HISTORY_FILE = "history.json"
+
+def load_history():
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def save_history(history):
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(history, f, ensure_ascii=False, indent=2)
+
 def main():
-    rerun_flag = False
-    example_rerun_flag = False
     st.markdown('<h1 class="main-header">🎓 Математический Ассистент</h1>', unsafe_allow_html=True)
     st.markdown('<p style="text-align: center; color: #666;">AI-помощник по математике на основе ваших учебников</p>', unsafe_allow_html=True)
     
+    # Загружаем историю всегда (независимо от assistant)
+    if "history" not in st.session_state:
+        st.session_state.history = load_history()
+
+    # Загружаем ассистента только один раз
     if "assistant" not in st.session_state:
         with st.spinner("🔄 Загружаю учебные материалы..."):
             st.session_state.assistant = MathAssistant("data")
+
     
     assistant = st.session_state.assistant
-
-    if "history" not in st.session_state:
-        st.session_state.history = []
-
-    if "last_answer" not in st.session_state:
-        st.session_state.last_answer = ""
     
     with st.sidebar:
         st.image("https://cdn-icons-png.flaticon.com/512/2103/2103655.png", width=100)
@@ -355,14 +367,10 @@ def main():
             "Что такое собственные значения?"
         ]
         
-    example_rerun_flag = False
-    for example in examples:
-        if st.button(example, key=f"example_{example}"):
-            st.session_state.question = example
-            example_rerun_flag = True
-
-    if example_rerun_flag:
-        st.experimental_rerun()
+        for example in examples:
+            if st.button(example, key=f"example_{example}"):
+                st.session_state.question = example
+                st.rerun()
     
     st.markdown("### 💭 Задайте вопрос по математике")
     
@@ -375,52 +383,37 @@ def main():
     )
     
     col1, col2, col3 = st.columns([1, 1, 1])
-    rerun_flag = False
     
     with col1:
         if st.button("🎯 Получить ответ", type="primary", use_container_width=True):
             if question.strip():
-                answer = None
-                elapsed = 0
                 with st.spinner("🔍 Ищу информацию в учебниках..."):
-                    def get_ai_answer(assistant, question):
-                        start_time = time.time()
-                        ans = assistant.ask(question)
-                        elapsed = time.time() - start_time
-                        return ans, elapsed
+                    start_time = time.time()
+                    answer = assistant.ask(question)
+                    elapsed = time.time() - start_time
+                    
+                    if "history" not in st.session_state:
+                        st.session_state.history = []
+                    st.session_state.history.append({
+                        "question": question,
+                        "answer": answer,
+                        "time": elapsed
+                    })
 
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        future = executor.submit(get_ai_answer, assistant, question)
-                        try:
-                            answer, elapsed = future.result(timeout=60)
-                        except concurrent.futures.TimeoutError:
-                            st.error("⏳ Слишком долгий ответ от AI, попробуйте позже.")
-                            answer = "❌ Время ожидания ответа превышено."
-                            elapsed = 0
-
-                # Обновляем session_state
-                st.session_state.history.append({
-                    "question": question,
-                    "answer": answer,
-                    "time": elapsed
-                })
-                st.session_state.last_answer = answer
-                st.session_state.last_time = elapsed
-                st.session_state.question = question
-
-                # Устанавливаем флаг перезапуска
-                rerun_flag = True
+                    save_history(st.session_state.history)
+                    
+                    st.session_state.last_answer = answer
+                    st.session_state.last_time = elapsed
+                    st.rerun()
             else:
                 st.warning("⚠️ Введите вопрос")
     
-    if rerun_flag:
-        st.experimental_rerun()
-
     with col2:
         if st.button("🔄 Новый вопрос", use_container_width=True):
+            if "last_answer" in st.session_state:
+                del st.session_state.last_answer
             st.session_state.question = ""
-            st.session_state.last_answer = ""
-            rerun_flag = True
+            st.rerun()
     
     with col3:
         if st.button("📜 История", use_container_width=True):
@@ -486,9 +479,6 @@ def main():
             Сумма: \(\sum_{i=1}^{n} i = \frac{n(n+1)}{2}\)
             """
             st.markdown(render_math_answer(test_math), unsafe_allow_html=True)
-
-    if rerun_flag or example_rerun_flag:
-        st.experimental_rerun()
 
 if __name__ == "__main__":
     main()
