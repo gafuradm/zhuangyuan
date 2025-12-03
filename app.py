@@ -21,31 +21,21 @@ def sanitize_latex(text: str) -> str:
     if not text:
         return text
 
-    # 1. Удаляем только KaTeX-конфиги, НЕ трогая обычный LaTeX
-    text = re.sub(r"\{left:\s*'[^']*',\s*right:\s*'[^']*'\}", "", text)
-
-    # 2. Полностью убираем ``` и языки
+    # Убираем Markdown коды
     text = re.sub(r"```[a-zA-Z]*", "", text)
     text = text.replace("```", "")
 
-    # 3. Чиним \[ ... \] → $$ ... $$
+    # Исправляем \[ ... \] → $$ ... $$
     text = re.sub(r"\\\[(.*?)\\\]", r"$$\1$$", text, flags=re.S)
 
-    # 4. Чиним некорректные скобки вида ( \int ... )
-    text = re.sub(r"\(\s*(\\int|\\sum|\\frac|\\lim)", r"$$\1", text)
-    text = re.sub(r"\)\s*", r"$$", text)
+    # Исправляем \begin{align} ... \end{align} → $$ ... $$
+    text = re.sub(r"\\begin\{align\}(.*?)\\end\{align\}", r"$$\1$$", text, flags=re.S)
 
-    # 5. Чиним \frac(a)(b) → \frac{a}{b}
+    # Исправляем \frac(a)(b) → \frac{a}{b}
     text = re.sub(r"\\frac\((.*?)\)\((.*?)\)", r"\\frac{\1}{\2}", text)
 
-    # 6. Одинарные $ → \( \)
-    text = re.sub(r"(?<!\$)\$(?!\$)(.*?)\$", r"\\(\1\\)", text)
-
-    # 7. Убираем двойные escape
+    # Чистим лишние escape
     text = text.replace("\\\\", "\\")
-
-    # 8. Чистим лишние пустые строки
-    text = re.sub(r"\n{3,}", "\n\n", text)
 
     return text.strip()
 
