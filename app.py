@@ -15,6 +15,36 @@ from reportlab.pdfbase.ttfonts import TTFont
 import fitz  # для PDF
 from PIL import Image  # для изображений
 import pytesseract  # OCR
+import re
+
+def sanitize_latex(text: str) -> str:
+    if not text:
+        return text
+
+    # 1. Убираем KaTeX-конфиги и JSON-мусор
+    text = re.sub(r"\{[^{}]*left[^{}]*right[^{}]*\}", "", text)
+    text = re.sub(r"\{.*?\}", "", text)
+
+    # 2. Убираем ``` и указания языка
+    text = re.sub(r"```[a-zA-Z]*", "", text)
+    text = text.replace("```", "")
+
+    # 3. Чиним неправильные \(...\)
+    text = text.replace("\\(", "(").replace("\\)", ")")
+
+    # 4. Чиним \frac(a)(b) → \frac{a}{b}
+    text = re.sub(r"\\frac\((.*?)\)\((.*?)\)", r"\\frac{\1}{\2}", text)
+
+    # 5. Одиночные $ → \( \)
+    text = re.sub(r"(?<!\$)\$(?!\$)(.*?)\$", r"\\(\1\\)", text)
+
+    # 6. Лишние экранирования
+    text = text.replace("\\\\", "\\")
+
+    # 7. Убираем лишние пустые строки
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    return text.strip()
 
 # ========== CONFIGURATION ==========
 st.set_page_config(
@@ -275,7 +305,8 @@ ANSWER:
             )
             
             if response.status_code == 200:
-                return response.json()["choices"][0]["message"]["content"]
+                raw_answer = response.json()["choices"][0]["message"]["content"]
+                return sanitize_latex(raw_answer)
             else:
                 return f"❌ API Error ({response.status_code}): {response.text}"
                 
@@ -284,12 +315,11 @@ ANSWER:
 
 # ========== STREAMLIT INTERFACE ==========
 def render_math_answer(answer: str):
-    """Displays answer with LaTeX support"""
-    # Wrap answer in div with styling class
-    
+    safe = sanitize_latex(answer)
+
     html = f"""
     <div class="math-content">
-        {answer}
+        {safe}
     </div>
     """
     return html
@@ -396,8 +426,8 @@ No solutions, only problem statements.
         timeout=60
     )
 
-    return response.json()["choices"][0]["message"]["content"]
-
+    raw = response.json()["choices"][0]["message"]["content"]
+    return sanitize_latex(raw)
 
 def check_answers(tasks, user_answers, api_key: str):
     prompt = "You are a strict examiner. Check the student's answers.\n\n"
@@ -435,7 +465,8 @@ Analyze EACH problem:
         timeout=120
     )
 
-    return response.json()["choices"][0]["message"]["content"]
+    raw = response.json()["choices"][0]["message"]["content"]
+    return sanitize_latex(raw)
 
 # ======= Strategy Developer Module =======
 def generate_strategy(user_input: str, api_key: str) -> str:
@@ -482,7 +513,8 @@ User input:
         )
 
         if response.status_code == 200:
-            return response.json()["choices"][0]["message"]["content"]
+            raw = response.json()["choices"][0]["message"]["content"]
+            return sanitize_latex(raw)
         else:
             return f"❌ API Error ({response.status_code}): {response.text}"
     except Exception as e:
@@ -645,7 +677,8 @@ def main():
         st.markdown(render_math_answer(st.session_state.last_answer), unsafe_allow_html=True)
         
         # PDF download button
-        pdf_bytes = create_pdf(st.session_state.last_answer)
+        clean_answer = sanitize_latex(st.session_state.last_answer)
+        pdf_bytes = create_pdf(clean_answer)
         st.download_button(
             label="📄 Download answer as PDF",
             data=pdf_bytes,
