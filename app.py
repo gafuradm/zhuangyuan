@@ -25,6 +25,9 @@ def sanitize_latex(text: str) -> str:
     text = re.sub(r"```[a-zA-Z]*", "", text)
     text = text.replace("```", "")
 
+    text = re.sub(r"\(\\int\s+(.*?)\s*,\s*dx\s*=", r"\\int \1 dx =", text)
+    text = text.replace("(", "\\(").replace(")", "\\)")
+
     # Исправляем \[ ... \] → $$ ... $$
     text = re.sub(r"\\\[(.*?)\\\]", r"$$\1$$", text, flags=re.S)
 
