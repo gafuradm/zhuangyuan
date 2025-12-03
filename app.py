@@ -21,27 +21,30 @@ def sanitize_latex(text: str) -> str:
     if not text:
         return text
 
-    # 1. Убираем KaTeX-конфиги и JSON-мусор
-    text = re.sub(r"\{[^{}]*left[^{}]*right[^{}]*\}", "", text)
-    text = re.sub(r"\{.*?\}", "", text)
+    # 1. Удаляем только KaTeX-конфиги, НЕ трогая обычный LaTeX
+    text = re.sub(r"\{left:\s*'[^']*',\s*right:\s*'[^']*'\}", "", text)
 
-    # 2. Убираем ``` и указания языка
+    # 2. Полностью убираем ``` и языки
     text = re.sub(r"```[a-zA-Z]*", "", text)
     text = text.replace("```", "")
 
-    # 3. Чиним неправильные \(...\)
-    text = text.replace("\\(", "(").replace("\\)", ")")
+    # 3. Чиним \[ ... \] → $$ ... $$
+    text = re.sub(r"\\\[(.*?)\\\]", r"$$\1$$", text, flags=re.S)
 
-    # 4. Чиним \frac(a)(b) → \frac{a}{b}
+    # 4. Чиним некорректные скобки вида ( \int ... )
+    text = re.sub(r"\(\s*(\\int|\\sum|\\frac|\\lim)", r"$$\1", text)
+    text = re.sub(r"\)\s*", r"$$", text)
+
+    # 5. Чиним \frac(a)(b) → \frac{a}{b}
     text = re.sub(r"\\frac\((.*?)\)\((.*?)\)", r"\\frac{\1}{\2}", text)
 
-    # 5. Одиночные $ → \( \)
+    # 6. Одинарные $ → \( \)
     text = re.sub(r"(?<!\$)\$(?!\$)(.*?)\$", r"\\(\1\\)", text)
 
-    # 6. Лишние экранирования
+    # 7. Убираем двойные escape
     text = text.replace("\\\\", "\\")
 
-    # 7. Убираем лишние пустые строки
+    # 8. Чистим лишние пустые строки
     text = re.sub(r"\n{3,}", "\n\n", text)
 
     return text.strip()
@@ -249,7 +252,10 @@ class MathAssistant:
 
             FORMAT RULE:
 Do NOT output KaTeX configuration objects such as {{left:'', right:''}}.
-Only output pure LaTeX inside $...$ or \[...\].
+Output formulas ONLY as:
+Inline: \( ... \)
+Display: $$ ... $$
+Never use [ ... ] or ( ... ) for formulas.
 
 IMPORTANT: All mathematical formulas must be written in LaTeX format:
 - For inline formulas: \\(formula\\)
